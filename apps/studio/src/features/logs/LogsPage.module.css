@@ -1,0 +1,94 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 4px 24px 20px;
+  gap: 14px;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-right: 8px;
+  font-size: var(--text-lg);
+}
+
+.search {
+  width: 260px;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.console {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px 0;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: var(--bg-1);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.line {
+  display: flex;
+  gap: 14px;
+  padding: 2px 16px;
+  line-height: 1.7;
+}
+
+.line:hover {
+  background: var(--surface);
+}
+
+.ts {
+  flex-shrink: 0;
+  color: var(--text-4);
+}
+
+.source {
+  flex-shrink: 0;
+  width: 110px;
+  color: var(--accent-hover);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.msg {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.debug .msg {
+  color: var(--text-3);
+}
+
+.warn {
+  background: rgb(251 191 36 / 0.04);
+}
+
+.warn .msg {
+  color: var(--warning);
+}
+
+.error {
+  background: rgb(248 113 113 / 0.05);
+}
+
+.error .msg {
+  color: var(--danger);
+}
