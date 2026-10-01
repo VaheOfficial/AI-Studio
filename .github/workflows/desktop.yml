@@ -1,5 +1,6 @@
 # Builds the desktop app for every system on that system's own runner (a macOS .dmg can only be made on macOS).
-# Run it from the Actions tab, or push a tag like v0.1.0; the packages are attached to the run as artifacts.
+# Run it from the Actions tab to get the packages as artifacts of the run; push a tag like v0.1.0 to also publish
+# them as a GitHub release (the tag sets the version).
 name: Desktop app
 
 on:
@@ -42,7 +43,11 @@ jobs:
         run: node scripts/fetch-uv.mjs ${{ matrix.uv }}
       - name: Package
         working-directory: apps/desktop
-        run: pnpm exec electron-builder ${{ matrix.builder }} --publish never
+        shell: bash
+        run: |
+          version=()
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then version=("-c.extraMetadata.version=${GITHUB_REF_NAME#v}"); fi
+          pnpm exec electron-builder ${{ matrix.builder }} --publish never "${version[@]}"
       - uses: actions/upload-artifact@v4
         with:
           name: AI-Studio-${{ matrix.name }}
@@ -51,3 +56,37 @@ jobs:
             apps/desktop/release/*.dmg
             apps/desktop/release/*.exe
             apps/desktop/release/*.AppImage
+
+  release:
+    name: Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: packages
+          merge-multiple: true
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > notes.md <<'EOF'
+          ## Downloads
+
+          | System | File ending in |
+          |---|---|
+          | macOS, Apple silicon | `-mac-arm64.dmg` |
+          | macOS, Intel | `-mac-x64.dmg` |
+          | Windows, no install | `-portable.exe` |
+          | Windows, installer | `-setup.exe` |
+          | Linux | `.AppImage` |
+
+          The first launch downloads Python and the server's packages (about 300 MB), so it needs internet once.
+
+          The builds are not signed with a developer certificate. On macOS, the first time, allow the app under
+          System Settings → Privacy & Security → Open Anyway. On Windows, SmartScreen may ask once (More info → Run anyway).
+          EOF
+          gh release create "$GITHUB_REF_NAME" packages/* --repo "$GITHUB_REPOSITORY" --title "AI Studio $GITHUB_REF_NAME" --notes-file notes.md --generate-notes

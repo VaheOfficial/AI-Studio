@@ -51,8 +51,12 @@ uses `server/.venv` when it exists and attaches to a server already running on p
 ### All platforms at once: GitHub Actions
 
 `.github/workflows/desktop.yml` builds on a macOS, a Windows and a Linux runner. Start it from the repository's
-Actions tab ("Desktop app" → Run workflow) or push a tag such as `v0.1.0`; each job attaches its packages to the
-run as an artifact (`AI-Studio-macOS` holds the Apple silicon and the Intel `.dmg`).
+Actions tab ("Desktop app" → Run workflow); each job attaches its packages to the run as an artifact
+(`AI-Studio-macOS` holds the Apple silicon and the Intel `.dmg`).
+
+To publish a release, push a tag: `git tag v0.2.0` then `git push origin v0.2.0`. The same builds run with the
+tag as the version, and a GitHub release named after the tag is created with every package attached, so they
+can be downloaded from the repository's Releases page.
 
 ### Signing
 
