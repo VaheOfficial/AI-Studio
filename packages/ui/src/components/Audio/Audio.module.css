@@ -1,0 +1,87 @@
+.player {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+}
+
+.play {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--wave-color);
+  color: #0b0b10;
+  cursor: pointer;
+  box-shadow: 0 0 20px -4px var(--wave-color);
+  transition: transform var(--dur-fast) var(--ease-spring);
+}
+
+.play:hover {
+  transform: scale(1.06);
+}
+
+.play:active {
+  transform: scale(0.94);
+}
+
+.playIcon {
+  margin-left: 2px;
+}
+
+.compact .play {
+  width: 28px;
+  height: 28px;
+}
+
+/* Canvas code reads `color` to get a resolved played-bar color */
+.wave {
+  flex: 1;
+  min-width: 0;
+  color: var(--wave-color);
+  cursor: pointer;
+  touch-action: none;
+}
+
+.wave canvas {
+  display: block;
+}
+
+.time {
+  flex-shrink: 0;
+  min-width: 36px;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.total {
+  color: var(--text-3);
+}
+
+.download {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  color: var(--text-3);
+  transition:
+    color var(--dur-fast),
+    background-color var(--dur-fast);
+}
+
+.download:hover {
+  color: var(--text-1);
+  background: var(--surface-hover);
+}
+
+.live {
+  display: block;
+  width: 100%;
+}

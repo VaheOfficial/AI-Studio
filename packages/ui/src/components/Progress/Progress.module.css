@@ -1,0 +1,106 @@
+.track {
+  --c1: #8b5cf6;
+  --c2: #22d3ee;
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: var(--bg-4);
+}
+
+.xs {
+  height: 2px;
+}
+
+.sm {
+  height: 4px;
+}
+
+.md {
+  height: 6px;
+}
+
+.success {
+  --c1: #10b981;
+  --c2: #34d399;
+}
+
+.danger {
+  --c1: #ef4444;
+  --c2: #f87171;
+}
+
+.warning {
+  --c1: #f59e0b;
+  --c2: #fbbf24;
+}
+
+.bar {
+  position: relative;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--c1), var(--c2));
+  box-shadow: 0 0 10px color-mix(in srgb, var(--c1) 60%, transparent);
+}
+
+/* Moving sheen on the filled part so active downloads feel alive */
+.bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.35), transparent);
+  background-size: 200% 100%;
+  animation: ui-shimmer 1.8s linear infinite;
+}
+
+.indeterminate {
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, transparent, var(--c1), var(--c2), transparent);
+  animation: indeterminate 1.3s var(--ease-in-out) infinite;
+}
+
+@keyframes indeterminate {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+
+.ring {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.ring svg {
+  transform: rotate(-90deg);
+}
+
+.ringSpin svg {
+  animation: ui-spin 1s linear infinite;
+}
+
+.ringTrack {
+  stroke: var(--bg-4);
+}
+
+.ringBar {
+  stroke: var(--accent);
+  filter: drop-shadow(0 0 3px var(--accent-glow));
+}
+
+.ringLabel {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}

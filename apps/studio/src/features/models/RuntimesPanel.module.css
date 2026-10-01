@@ -1,0 +1,112 @@
+.sections {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.sectionTitle {
+  margin-bottom: 4px;
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+
+.intro {
+  max-width: 720px;
+  margin-bottom: 14px;
+  color: var(--text-3);
+  font-size: var(--text-sm);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 14px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--hue) 12%, var(--bg-2));
+  color: var(--hue);
+}
+
+.icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.titles {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.name {
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+
+.kinds {
+  display: flex;
+  gap: 4px;
+}
+
+.state {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stateItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
+.loaded {
+  color: var(--text-3);
+  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-top: auto;
+}
+
+.actions:empty {
+  display: none;
+}
+
+.job {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.jobMsg {
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

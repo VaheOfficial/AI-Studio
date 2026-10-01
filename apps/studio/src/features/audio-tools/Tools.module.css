@@ -1,0 +1,131 @@
+.page {
+  --hue: var(--hue-voice);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  height: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 20px 28px 48px;
+  overflow-y: auto;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.header h1 {
+  font-size: var(--text-xl);
+}
+
+.header p {
+  margin-top: 2px;
+  color: var(--text-3);
+  font-size: var(--text-md);
+}
+
+.headerIcon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--hue) 12%, var(--bg-2));
+  border: 1px solid color-mix(in srgb, var(--hue) 25%, transparent);
+  color: var(--hue);
+}
+
+.hint {
+  color: var(--text-3);
+  font-size: var(--text-xs);
+}
+
+.drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 28px 20px;
+  border: 1.5px dashed var(--border-strong);
+  border-radius: var(--radius-xl);
+  background: var(--bg-1);
+  text-align: center;
+  transition:
+    border-color var(--dur-base),
+    background-color var(--dur-base);
+}
+
+.dragging {
+  border-color: var(--hue);
+  background: color-mix(in srgb, var(--hue) 6%, var(--bg-1));
+}
+
+.dropIcon {
+  color: var(--hue);
+}
+
+.progress {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(420px, 100%);
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
+.result {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-1);
+}
+
+.resultHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stem {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  align-items: center;
+  gap: 10px;
+}
+
+.stemName {
+  color: var(--text-2);
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.sourceRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.transcript {
+  color: var(--text-2);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+}
+
+.error {
+  color: var(--danger);
+  font-size: var(--text-sm);
+}

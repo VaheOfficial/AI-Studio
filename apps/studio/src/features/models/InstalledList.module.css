@@ -1,0 +1,143 @@
+.groups {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.groupTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.groupTitle svg {
+  width: 15px;
+  height: 15px;
+  color: var(--hue);
+}
+
+.groupCount {
+  color: var(--text-4);
+  font-weight: 500;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.row {
+  --hue: var(--accent);
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 12px 12px 14px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  transition:
+    border-color var(--dur-base),
+    background-color var(--dur-base);
+}
+
+.row:hover {
+  border-color: var(--border-strong);
+}
+
+.row[data-loaded] {
+  border-color: color-mix(in srgb, var(--hue) 35%, transparent);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--hue) 7%, var(--bg-1)), var(--bg-1) 60%);
+}
+
+.row[data-loaded]::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--hue);
+  box-shadow: 0 0 14px var(--hue);
+}
+
+.icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--hue) 11%, var(--bg-2));
+  color: var(--hue);
+}
+
+.icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.info {
+  flex: 1;
+  min-width: 0;
+}
+
+.nameRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.name {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta {
+  display: block;
+  color: var(--text-3);
+  font-size: var(--text-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source {
+  font-family: var(--font-mono);
+}
+
+.status {
+  width: 110px;
+}
+
+.statusText {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
+.statusText[data-tone='error'] {
+  color: var(--danger);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}

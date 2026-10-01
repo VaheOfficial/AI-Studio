@@ -1,0 +1,191 @@
+.timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-1);
+}
+
+.zoom {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+}
+
+.now {
+  margin-right: auto;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.zoomLabel {
+  margin-right: 4px;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.viewport {
+  overflow-x: auto;
+  border-radius: var(--radius-md);
+  scrollbar-width: thin;
+}
+
+.lane {
+  position: relative;
+  height: 64px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background-color: var(--surface);
+  background-image: repeating-linear-gradient(
+    90deg,
+    transparent 0,
+    transparent calc(10% - 1px),
+    var(--border) 10%
+  );
+  touch-action: none;
+  cursor: text;
+}
+
+.wave {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  color: var(--text-3);
+}
+
+.playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 2;
+  width: 1px;
+  background: var(--danger);
+  box-shadow: 0 0 8px var(--danger);
+  pointer-events: none;
+}
+
+.block {
+  position: absolute;
+  top: 8px;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  min-width: 2px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--c) 55%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--c) 26%, transparent);
+  color: var(--text-1);
+  font-size: 10px;
+  font-weight: 600;
+  cursor: grab;
+  outline: none;
+  transition:
+    background-color var(--dur-fast),
+    box-shadow var(--dur-fast);
+}
+
+.block:active {
+  cursor: grabbing;
+}
+
+.block:focus-visible {
+  box-shadow: 0 0 0 2px var(--border-focus);
+}
+
+.selected {
+  background: color-mix(in srgb, var(--c) 42%, transparent);
+  border-color: var(--c);
+  z-index: 1;
+}
+
+.editing {
+  box-shadow: 0 0 0 2px var(--c);
+}
+
+.overlap {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.disabled {
+  cursor: default;
+}
+
+.label {
+  padding: 0 5px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+.edge {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: ew-resize;
+  background: color-mix(in srgb, var(--c) 45%, transparent);
+}
+
+.edgeStart {
+  left: 0;
+}
+
+.edgeEnd {
+  right: 0;
+}
+
+.actions {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+  margin-right: 8px;
+}
+
+.action {
+  display: grid;
+  border: 0;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-xs);
+  background: var(--surface-glass);
+  color: var(--text-1);
+}
+
+.action:hover {
+  background: var(--bg-4);
+}
+
+.action:disabled {
+  opacity: 0.5;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.overlapLink {
+  display: inline-flex;
+  border: 0;
+  background: none;
+  align-items: center;
+  gap: 4px;
+  color: var(--danger);
+}

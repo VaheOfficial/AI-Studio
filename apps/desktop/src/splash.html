@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'" />
+    <title>AI Studio</title>
+    <style>
+      /* Shown before the web app (and its design tokens) exists; the values mirror packages/ui tokens.css (dark). */
+      :root {
+        --bg-0: #060609;
+        --bg-2: #111118;
+        --border: rgb(255 255 255 / 0.07);
+        --text-1: #eeeef4;
+        --text-2: #a4a4b5;
+        --text-3: #6e6e80;
+        --accent: #8b5cf6;
+        --danger: #f87171;
+        color-scheme: dark;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      body {
+        display: grid;
+        place-items: center;
+        background: var(--bg-0);
+        color: var(--text-1);
+        font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+        user-select: none;
+      }
+      main {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 14px;
+        width: min(560px, 86vw);
+        text-align: center;
+      }
+      svg {
+        width: 64px;
+        height: 64px;
+        animation: breathe 2.4s ease-in-out infinite;
+      }
+      .failed svg {
+        animation: none;
+      }
+      h1 {
+        margin: 6px 0 0;
+        font-size: 18px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+      #detail {
+        min-height: 21px;
+        max-width: 100%;
+        overflow: hidden;
+        color: var(--text-3);
+        font-size: 12.5px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .bar {
+        width: 180px;
+        height: 3px;
+        overflow: hidden;
+        border-radius: 3px;
+        background: var(--bg-2);
+      }
+      .bar::after {
+        content: '';
+        display: block;
+        width: 40%;
+        height: 100%;
+        border-radius: inherit;
+        background: var(--accent);
+        animation: slide 1.3s ease-in-out infinite;
+      }
+      .failed .bar,
+      #error {
+        display: none;
+      }
+      .failed #error {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        width: 100%;
+      }
+      .failed h1 {
+        color: var(--danger);
+      }
+      pre {
+        max-height: 190px;
+        margin: 0;
+        padding: 10px 12px;
+        overflow: auto;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--bg-2);
+        color: var(--text-2);
+        font: 11.5px/1.5 ui-monospace, 'Cascadia Mono', Menlo, monospace;
+        text-align: left;
+        white-space: pre-wrap;
+        user-select: text;
+      }
+      .actions {
+        display: flex;
+        justify-content: center;
+        gap: 8px;
+      }
+      button {
+        padding: 7px 14px;
+        border: 1px solid var(--border);
+        border-radius: 9px;
+        background: var(--bg-2);
+        color: var(--text-1);
+        font: inherit;
+        cursor: pointer;
+      }
+      button:hover {
+        border-color: var(--accent);
+      }
+      button.primary {
+        border-color: transparent;
+        background: var(--accent);
+      }
+      @keyframes breathe {
+        50% {
+          transform: scale(0.94);
+          opacity: 0.75;
+        }
+      }
+      @keyframes slide {
+        from {
+          transform: translateX(-110%);
+        }
+        to {
+          transform: translateX(260%);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main id="root">
+      <svg viewBox="0 0 32 32" aria-hidden="true">
+        <defs>
+          <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#a78bfa" />
+            <stop offset="0.5" stop-color="#818cf8" />
+            <stop offset="1" stop-color="#22d3ee" />
+          </linearGradient>
+        </defs>
+        <rect width="32" height="32" rx="9" fill="#1a1a24" />
+        <path d="M16 5.5 18.6 13.4 26.5 16 18.6 18.6 16 26.5 13.4 18.6 5.5 16 13.4 13.4Z" fill="url(#g)" />
+      </svg>
+      <h1 id="title">Starting AI Studio</h1>
+      <div id="detail"></div>
+      <div class="bar"></div>
+      <div id="error">
+        <pre id="log"></pre>
+        <div class="actions">
+          <button class="primary" id="retry">Try again</button>
+          <button id="logs">Open the log folder</button>
+          <button id="quit">Quit</button>
+        </div>
+      </div>
+    </main>
+    <script>
+      const root = document.getElementById('root')
+      const title = document.getElementById('title')
+      const detail = document.getElementById('detail')
+      window.desktop.onStatus((status) => {
+        root.classList.remove('failed')
+        if (status.title !== undefined) title.textContent = status.title
+        if (status.detail !== undefined) detail.textContent = status.detail
+      })
+      window.desktop.onError((error) => {
+        root.classList.add('failed')
+        title.textContent = "AI Studio couldn't start"
+        detail.textContent = error.message
+        document.getElementById('log').textContent = error.log || error.logFile
+      })
+      document.getElementById('retry').addEventListener('click', () => window.desktop.retry())
+      document.getElementById('logs').addEventListener('click', () => window.desktop.openLogs())
+      document.getElementById('quit').addEventListener('click', () => window.desktop.quit())
+    </script>
+  </body>
+</html>

@@ -1,0 +1,46 @@
+[project]
+name = "ai-studio-server"
+version = "0.1.0"
+description = "Local backend for AI Studio: models, runtimes, generation and a tool-using agent."
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pydantic>=2.7",
+    "httpx>=0.27",
+    "huggingface_hub>=0.34",
+    "psutil>=6.0",
+    "nvidia-ml-py>=12.560",
+    "python-multipart>=0.0.9",
+    "uv>=0.8",
+    # Number verbalization for TTS text normalization (pure Python).
+    "num2words>=0.5.13",
+    # Agent workspace: PTY terminals (ConPTY), file watching, and the agent's browser (drives the installed
+    # Edge/Chrome through Playwright; no browser download needed).
+    "pywinpty>=2.0; sys_platform == 'win32'",
+    "ptyprocess>=0.7; sys_platform != 'win32'",
+    "watchfiles>=0.21",
+    "playwright>=1.45",
+    # Audiobook import: PDF text layer (pure Python).
+    "pypdf>=5.0",
+    # Agent vision (downscaling images before they go to a model) and web research (readable page text).
+    "pillow>=10.0",
+    "trafilatura>=2.0",
+    # Connectors: the agent talks to any MCP server (local programs over stdio, remote ones over HTTP).
+    "mcp>=1.9",
+    # HTTPS verified against the operating system's certificate store, not only the bundled CA list.
+    "truststore>=0.10",
+]
+
+[project.optional-dependencies]
+# WebSocket client for scripted checks against /api/ws (the server itself gets it via uvicorn[standard]).
+dev = [
+    "websockets>=13",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["studio"]

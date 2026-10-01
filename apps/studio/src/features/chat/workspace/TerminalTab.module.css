@@ -1,0 +1,107 @@
+.tab {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.strip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  max-width: 200px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  color: var(--text-3);
+}
+
+.chip:hover {
+  background: var(--surface-hover);
+}
+
+.chipActive {
+  border-color: var(--border-strong);
+  background: var(--surface-active);
+  color: var(--text-1);
+}
+
+.chipMain {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 4px 4px 4px 8px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.chipMain span:not([data-status]) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chipMain svg {
+  flex-shrink: 0;
+}
+
+.chipClose {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-right: 2px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--text-4);
+  cursor: pointer;
+}
+
+.chipClose:hover {
+  background: var(--surface-active);
+  color: var(--text-1);
+}
+
+.views {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.view {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.view[hidden] {
+  display: none;
+}
+
+.exited {
+  padding: 5px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--danger-soft);
+  color: var(--text-2);
+  font-size: var(--text-xs);
+}
+
+.exited[data-ok] {
+  background: var(--surface);
+}

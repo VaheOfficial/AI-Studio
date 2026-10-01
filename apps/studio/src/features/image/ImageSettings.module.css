@@ -1,0 +1,75 @@
+.row2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.sizeAside {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+}
+
+.custom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.custom > :first-child,
+.custom > :nth-child(3) {
+  width: 84px;
+  font-family: var(--font-mono);
+}
+
+.times {
+  color: var(--text-3);
+}
+
+.sizeHint {
+  margin-left: auto;
+  color: var(--text-4);
+  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+}
+
+.seedRow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.seedInput {
+  flex: 1;
+  font-family: var(--font-mono);
+}
+
+.notes {
+  display: flex;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--hue-image) 5%, var(--bg-1));
+  color: var(--text-3);
+  font-size: var(--text-xs);
+  line-height: 1.5;
+}
+
+.notes ul {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.notesIcon {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin-top: 2px;
+  color: var(--hue-image);
+}

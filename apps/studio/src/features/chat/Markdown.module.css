@@ -1,0 +1,137 @@
+.md {
+  line-height: 1.7;
+  font-size: 14.5px;
+  overflow-wrap: anywhere;
+}
+
+.md > * + * {
+  margin-top: 0.85em;
+}
+
+.md p,
+.md ul,
+.md ol {
+  margin: 0;
+}
+
+.md ul,
+.md ol {
+  padding-left: 1.4em;
+}
+
+.md li + li {
+  margin-top: 0.3em;
+}
+
+.md li::marker {
+  color: var(--text-3);
+}
+
+.md h1,
+.md h2,
+.md h3 {
+  margin-top: 1.4em;
+  font-size: 1.1em;
+}
+
+.md a {
+  color: var(--accent-text);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--accent-text) 35%, transparent);
+  text-underline-offset: 3px;
+}
+
+.md strong {
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.md blockquote {
+  margin: 0;
+  padding-left: 14px;
+  border-left: 2px solid var(--border-strong);
+  color: var(--text-2);
+}
+
+.md table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.md th,
+.md td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+
+.md th {
+  color: var(--text-2);
+  font-weight: 600;
+}
+
+.md hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+.inline {
+  padding: 1.5px 6px;
+  border-radius: var(--radius-xs);
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  font-size: 0.87em;
+}
+
+.codeBlock {
+  border-radius: var(--radius-lg);
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.codeHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 8px 6px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-2);
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-3);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.copy:hover {
+  background: var(--surface-hover);
+  color: var(--text-1);
+}
+
+.codeBlock pre {
+  margin: 0;
+  padding: 14px 16px;
+  overflow-x: auto;
+  font-size: 12.5px;
+  line-height: 1.65;
+}
+
+.img {
+  max-width: 100%;
+  max-height: 420px;
+  border-radius: var(--radius-lg);
+  cursor: zoom-in;
+}

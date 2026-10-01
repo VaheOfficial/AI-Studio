@@ -1,0 +1,17 @@
+{
+  "name": "ai-studio",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --filter studio dev",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "server": "powershell -ExecutionPolicy Bypass -File server/run.ps1",
+    "desktop": "pnpm --filter studio build && pnpm --filter studio-desktop start",
+    "desktop:pack": "pnpm --filter studio-desktop run pack",
+    "desktop:dist": "pnpm --filter studio-desktop run dist"
+  },
+  "packageManager": "pnpm@11.2.2"
+}

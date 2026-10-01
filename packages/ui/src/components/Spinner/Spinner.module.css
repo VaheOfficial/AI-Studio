@@ -1,0 +1,10 @@
+.spinner {
+  display: inline-flex;
+  flex-shrink: 0;
+  animation: ui-spin 0.7s linear infinite;
+}
+
+.spinner svg {
+  width: 100%;
+  height: 100%;
+}

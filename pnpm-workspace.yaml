@@ -1,0 +1,7 @@
+packages:
+  - apps/*
+  - packages/*
+allowBuilds:
+  # Squirrel installer tooling pulled in by electron-builder; the desktop app ships as portable/NSIS, so its build
+  # script is not needed
+  electron-winstaller: false

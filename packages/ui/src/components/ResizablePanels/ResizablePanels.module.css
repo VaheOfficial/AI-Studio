@@ -1,0 +1,50 @@
+.panels {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+}
+
+.dragging {
+  cursor: col-resize;
+  user-select: none;
+}
+
+.dragging iframe,
+.dragging img {
+  pointer-events: none;
+}
+
+.main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.side {
+  flex-shrink: 0;
+  min-width: 0;
+  min-height: 0;
+}
+
+.handle {
+  position: relative;
+  width: 1px;
+  flex-shrink: 0;
+  background: var(--border);
+  cursor: col-resize;
+  outline: none;
+  transition: background-color var(--dur-base);
+}
+
+.handle::before {
+  content: '';
+  position: absolute;
+  inset: 0 -4px;
+}
+
+.handle:hover,
+.handle:focus-visible,
+.dragging .handle {
+  background: var(--accent);
+}

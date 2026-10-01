@@ -1,0 +1,69 @@
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.head h1 {
+  font-size: var(--text-lg);
+}
+
+.headIcon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--hue-image) 14%, var(--bg-2));
+  color: var(--hue-image);
+  box-shadow: 0 0 20px -4px color-mix(in srgb, var(--hue-image) 60%, transparent);
+}
+
+.headIcon svg {
+  width: 15px;
+  height: 15px;
+}
+
+.submit {
+  position: sticky;
+  z-index: 2; /* above controls that create their own stacking (segment labels, slider thumbs) */
+  bottom: -24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin: 0 -20px -24px -24px;
+  padding: 14px 20px 18px 24px;
+  background: linear-gradient(transparent, var(--bg-0) 30%);
+}
+
+.hint {
+  display: flex;
+  gap: 4px;
+  color: var(--text-4);
+}
+
+.canvas {
+  position: relative;
+  padding: 20px 24px 40px;
+}
+
+.gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.more {
+  display: flex;
+  justify-content: center;
+  padding-top: 20px;
+}

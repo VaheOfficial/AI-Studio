@@ -1,0 +1,99 @@
+.tab {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.address {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+}
+
+.notice {
+  padding: 5px 12px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: var(--text-xs);
+}
+
+.view {
+  flex: 1;
+  min-height: 0;
+}
+
+.console {
+  border-top: 1px solid var(--border);
+}
+
+.consoleHead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 10px;
+  border: 0;
+  background: var(--bg-1);
+  color: var(--text-3);
+  font-size: var(--text-xs);
+  text-align: left;
+  cursor: pointer;
+}
+
+.consoleHead:hover {
+  color: var(--text-1);
+}
+
+.title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-4);
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logs {
+  max-height: 180px;
+  overflow: auto;
+  background: var(--bg-0);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.log {
+  padding: 3px 10px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.log[data-level='error'] {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.log[data-level='warning'] {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.empty {
+  padding: 8px 10px;
+  color: var(--text-4);
+}
+
+.consoleOpen .consoleHead {
+  color: var(--text-1);
+}

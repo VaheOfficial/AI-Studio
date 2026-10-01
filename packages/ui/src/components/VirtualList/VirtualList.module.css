@@ -1,0 +1,19 @@
+.scroller {
+  position: relative;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* The list anchors scrolling itself when rows above the viewport change height */
+  overflow-anchor: none;
+}
+
+.canvas {
+  position: relative;
+  width: 100%;
+}
+
+.row {
+  position: absolute;
+  left: 0;
+  right: 0;
+}

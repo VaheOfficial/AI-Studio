@@ -1,0 +1,32 @@
+.player {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.video {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius-md);
+  background: var(--bg-0);
+}
+
+.audioOnly {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border-radius: var(--radius-md);
+  background: var(--bg-2);
+  color: var(--hue-voice);
+}
+
+.audioOnly audio {
+  flex: 1;
+  min-width: 0;
+}
+
+.note {
+  color: var(--text-3);
+  font-size: var(--text-xs);
+}

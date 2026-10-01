@@ -1,0 +1,151 @@
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  height: 100%;
+  padding: 16px 16px 14px;
+  overflow: hidden;
+}
+
+.card[data-pinned] {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+
+.top {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.titles {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.vendor {
+  color: var(--text-3);
+  font-size: var(--text-xs);
+}
+
+.name {
+  overflow: hidden;
+  font-size: var(--text-md);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.id {
+  overflow: hidden;
+  color: var(--text-4);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.link {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text-3);
+  transition:
+    color var(--dur-fast),
+    background-color var(--dur-fast);
+}
+
+.link:hover {
+  color: var(--text-1);
+  background: var(--surface-hover);
+}
+
+.flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.modalities {
+  display: flex;
+  gap: 3px;
+}
+
+.modality {
+  display: grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 4px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-3);
+  color: var(--text-2);
+}
+
+.modality svg {
+  width: 12px;
+  height: 12px;
+}
+
+.modalityText {
+  font-size: 10px;
+}
+
+.arrow {
+  color: var(--text-4);
+}
+
+.badges {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.desc {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.footer {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: auto;
+}
+
+.prices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  min-width: 0;
+  font-size: var(--text-xs);
+}
+
+.price {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-1);
+}
+
+.ctx,
+.unknown,
+.browseOnly {
+  color: var(--text-3);
+}
+
+.browseOnly {
+  flex-shrink: 0;
+  font-size: var(--text-xs);
+}

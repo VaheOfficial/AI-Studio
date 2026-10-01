@@ -1,0 +1,114 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-1);
+}
+
+.panelHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-sm);
+}
+
+.panelHint {
+  flex: 1;
+  color: var(--text-3);
+  font-size: var(--text-xs);
+}
+
+.terms {
+  display: flex;
+  flex-direction: column;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.term {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) minmax(0, 0.8fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+}
+
+.term:hover {
+  background: var(--surface);
+}
+
+.termSource,
+.termTarget,
+.termNote {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.termTarget {
+  color: var(--accent-text);
+}
+
+.termNote {
+  color: var(--text-3);
+  font-size: var(--text-xs);
+}
+
+.arrow {
+  color: var(--text-3);
+}
+
+.termForm {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr auto;
+  gap: 6px;
+}
+
+.formActions {
+  display: flex;
+}
+
+.pasteBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.grow {
+  flex: 1;
+}
+
+.planRows {
+  display: flex;
+  flex-direction: column;
+  max-height: 240px;
+  overflow-y: auto;
+  border-top: 1px solid var(--border);
+}
+
+.planRow {
+  display: grid;
+  grid-template-columns: 2.4rem 1fr 1fr;
+  gap: 10px;
+  padding: 5px 4px;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--text-xs);
+}
+
+.planRow[data-unmatched] {
+  color: var(--text-4);
+}
+
+.planIndex {
+  color: var(--text-3);
+  font-family: var(--font-mono);
+}
+
+.planBefore {
+  color: var(--text-3);
+}

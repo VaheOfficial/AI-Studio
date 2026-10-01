@@ -1,0 +1,54 @@
+.gauge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px;
+  color: var(--text-3);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  cursor: default;
+}
+
+.track,
+.fill {
+  fill: none;
+  stroke-width: 2.4;
+}
+
+.track {
+  stroke: var(--border-strong);
+}
+
+.fill {
+  stroke: var(--accent);
+  stroke-linecap: round;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+  transition:
+    stroke-dashoffset var(--dur-slow) var(--ease-out),
+    stroke var(--dur-base);
+}
+
+.mid .fill {
+  stroke: var(--warning);
+}
+
+.high .fill {
+  stroke: var(--danger);
+}
+
+.high {
+  color: var(--danger);
+}
+
+.tip {
+  display: flex;
+  max-width: 260px;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.tipNote {
+  color: var(--text-3);
+  font-size: var(--text-xs);
+}

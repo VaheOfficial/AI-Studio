@@ -1,0 +1,135 @@
+.image {
+  position: relative;
+  margin: 0;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  aspect-ratio: 1;
+}
+
+.image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  cursor: zoom-in;
+  transition: transform 600ms var(--ease-out);
+}
+
+.image:hover img {
+  transform: scale(1.03);
+}
+
+.overlay {
+  position: absolute;
+  inset: auto 0 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 36px 10px 10px 12px;
+  background: linear-gradient(transparent, rgb(0 0 0 / 0.78));
+  opacity: 0;
+  transform: translateY(6px);
+  transition:
+    opacity var(--dur-base) var(--ease-out),
+    transform var(--dur-base) var(--ease-out);
+  pointer-events: none;
+}
+
+.image:hover .overlay,
+.image:focus-within .overlay {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+
+.prompt {
+  flex: 1;
+  min-width: 0;
+  color: rgb(255 255 255 / 0.85);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.actions {
+  display: flex;
+  gap: 2px;
+}
+
+.actions button {
+  color: #fff;
+  background: rgb(0 0 0 / 0.35);
+  backdrop-filter: blur(8px);
+}
+
+.compact .overlay {
+  display: none;
+}
+
+.audio {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 14px 14px 16px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+}
+
+.audio.compact {
+  padding: 8px 10px;
+  grid-column: 1 / -1;
+}
+
+.audioPrompt {
+  color: var(--text-2);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.audioRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.video {
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-2);
+}
+
+.video video {
+  display: block;
+  width: 100%;
+  background: var(--bg-0);
+}
+
+.videoBar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+}
+
+.videoPrompt {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

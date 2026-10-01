@@ -1,0 +1,66 @@
+.empty {
+  --hue: var(--accent);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius-lg);
+  border: 1px dashed color-mix(in srgb, var(--hue) 40%, transparent);
+  background: color-mix(in srgb, var(--hue) 6%, transparent);
+  transition:
+    background-color var(--dur-base),
+    border-color var(--dur-base);
+}
+
+.empty:hover {
+  background: color-mix(in srgb, var(--hue) 11%, transparent);
+  border-style: solid;
+}
+
+.emptyIcon {
+  display: inline-flex;
+  color: var(--hue);
+}
+
+.emptyIcon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.emptyText {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  font-size: var(--text-sm);
+}
+
+.emptyText span {
+  color: var(--text-3);
+}
+
+.arrow {
+  color: var(--text-3);
+  transition: transform var(--dur-base) var(--ease-out);
+}
+
+.empty:hover .arrow {
+  transform: translateX(3px);
+  color: var(--hue);
+}
+
+.value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.loaded {
+  color: var(--success);
+}

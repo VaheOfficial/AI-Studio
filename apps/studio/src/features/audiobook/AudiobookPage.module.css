@@ -1,0 +1,257 @@
+.library {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  height: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 20px 28px 48px;
+  overflow-y: auto;
+}
+
+.loading {
+  padding: 24px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.headerIcon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--hue-voice) 12%, var(--bg-2));
+  border: 1px solid color-mix(in srgb, var(--hue-voice) 25%, transparent);
+  color: var(--hue-voice);
+}
+
+.headerText {
+  flex: 1;
+}
+
+.headerText h1 {
+  font-size: var(--text-xl);
+}
+
+.headerText p {
+  margin-top: 2px;
+  color: var(--text-3);
+  font-size: var(--text-md);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+}
+
+.bookCard {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+}
+
+.bookIcon {
+  flex-shrink: 0;
+  color: var(--hue-voice);
+}
+
+.bookText {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.bookText span {
+  color: var(--text-3);
+  font-size: var(--text-xs);
+}
+
+.canvas {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 100%;
+  padding: 14px 18px 28px;
+}
+
+.scriptHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.scriptHead h2 {
+  font-size: var(--text-lg);
+}
+
+.hint {
+  color: var(--text-3);
+  font-size: var(--text-xs);
+  line-height: 1.6;
+}
+
+.hint code {
+  padding: 0 4px;
+  border-radius: var(--radius-xs);
+  background: var(--surface-hover);
+  font-family: var(--font-mono);
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-1);
+}
+
+.tagSelect {
+  width: 170px;
+}
+
+.script {
+  flex: 1;
+  min-height: 360px;
+  font-size: var(--text-sm);
+  line-height: 1.7;
+  resize: vertical;
+}
+
+.stats {
+  color: var(--text-3);
+  font-size: var(--text-xs);
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.row2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.chapter {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.chapterHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-sm);
+}
+
+.chapterIndex {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  border-radius: var(--radius-full);
+  background: var(--surface-hover);
+  color: var(--text-2);
+  font-size: var(--text-xs);
+}
+
+.chapterTitle {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.cover {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-3);
+}
+
+.cover img {
+  width: 56px;
+  height: 56px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+}
+
+.generate {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--hue-voice) 30%, var(--border));
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--hue-voice) 5%, var(--bg-1));
+}
+
+.jobText {
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.renders {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.renders h3 {
+  color: var(--text-2);
+  font-size: var(--text-md);
+}
+
+.render {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.renderHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.renderName {
+  overflow: hidden;
+  font-size: var(--text-sm);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.marks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  padding-left: 18px;
+  color: var(--text-2);
+  font-size: var(--text-xs);
+}
+
+.markTime {
+  color: var(--hue-voice);
+  font-family: var(--font-mono);
+}

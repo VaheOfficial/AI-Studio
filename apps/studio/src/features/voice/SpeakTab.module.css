@@ -1,0 +1,109 @@
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding-top: 16px;
+}
+
+.canvas {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 20px 28px 48px;
+}
+
+.editor {
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-1);
+  box-shadow: var(--shadow-inset);
+  transition:
+    border-color var(--dur-base),
+    box-shadow var(--dur-slow);
+}
+
+.editor:focus-within {
+  border-color: color-mix(in srgb, var(--hue-voice) 45%, transparent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--hue-voice) 10%, transparent);
+}
+
+.editorBusy {
+  border-color: color-mix(in srgb, var(--hue-voice) 55%, transparent);
+  box-shadow: 0 0 50px -20px var(--hue-voice);
+}
+
+.editorHead,
+.editorFoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+}
+
+.editorHead {
+  border-bottom: 1px solid var(--border);
+}
+
+.editorFoot {
+  border-top: 1px solid var(--border);
+}
+
+.speaker {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-weight: 500;
+  font-size: var(--text-sm);
+}
+
+.headTools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.counts {
+  color: var(--text-3);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.script {
+  padding: 16px 18px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  resize: none;
+  font-size: 16px;
+  line-height: 1.75;
+}
+
+.script:hover,
+.script:focus {
+  border: 0;
+  box-shadow: none;
+}
+
+.hint {
+  display: flex;
+  gap: 4px;
+  color: var(--text-4);
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  color: var(--text-3);
+  font-size: var(--text-xs);
+}
+
+.progress {
+  width: 160px;
+  flex-shrink: 0;
+}

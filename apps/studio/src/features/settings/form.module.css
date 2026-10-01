@@ -1,0 +1,44 @@
+.section {
+  overflow: hidden;
+}
+
+.sectionHead {
+  display: flex;
+  gap: 14px;
+  padding: 18px 22px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sectionIcon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: var(--radius-md);
+  background: var(--bg-3);
+  color: var(--text-2);
+}
+
+.sectionIcon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.sectionTitle {
+  font-size: var(--text-md);
+  letter-spacing: 0;
+}
+
+.sectionDesc {
+  margin-top: 2px;
+  color: var(--text-3);
+  font-size: var(--text-sm);
+}
+
+.sectionBody {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 20px 22px 22px;
+}

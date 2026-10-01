@@ -1,0 +1,17 @@
+.scroller {
+  position: relative;
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.canvas {
+  position: relative;
+  width: 100%;
+}
+
+.cell {
+  position: absolute;
+  contain: strict;
+}

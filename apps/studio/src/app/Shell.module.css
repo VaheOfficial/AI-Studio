@@ -1,0 +1,377 @@
+.shell {
+  display: grid;
+  grid-template-columns: var(--sidebar-w) 1fr;
+  height: 100vh;
+  overflow: hidden;
+  transition: grid-template-columns var(--dur-slow) var(--ease-out);
+}
+
+.collapsed {
+  grid-template-columns: 64px 1fr;
+}
+
+/* ------------------------------ sidebar ------------------------------ */
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 14px 10px 12px;
+  background: var(--bg-1);
+  border-right: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 32px;
+  padding: 0 5px;
+  margin-bottom: 10px;
+}
+
+.logo {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  filter: drop-shadow(0 0 10px rgb(139 92 246 / 0.45));
+}
+
+.brandName {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+
+.search {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 34px;
+  padding: 0 8px 0 11px;
+  margin-bottom: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-2);
+  color: var(--text-3);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    border-color var(--dur-fast),
+    color var(--dur-fast);
+}
+
+.collapsed .search {
+  justify-content: center;
+  padding: 0;
+}
+
+.search span {
+  flex: 1;
+  text-align: left;
+}
+
+.search:hover {
+  border-color: var(--border-strong);
+  color: var(--text-2);
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.navItem {
+  --hue: var(--text-1);
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: var(--radius-md);
+  color: var(--text-2);
+  font-weight: 500;
+  white-space: nowrap;
+  transition: color var(--dur-fast);
+}
+
+.collapsed .navItem {
+  justify-content: center;
+  padding: 0;
+}
+
+.navItem:hover {
+  color: var(--text-1);
+  background: var(--surface);
+}
+
+.navActive,
+.navActive:hover {
+  color: var(--text-1);
+  background: transparent;
+}
+
+.navPill {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  background: var(--surface-active);
+  box-shadow: var(--shadow-inset);
+}
+
+.navPill::before {
+  content: '';
+  position: absolute;
+  left: -10px;
+  top: 9px;
+  bottom: 9px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--hue);
+  box-shadow: 0 0 12px var(--hue);
+}
+
+.navIcon {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  transition: color var(--dur-fast);
+}
+
+.navActive .navIcon {
+  color: var(--hue);
+}
+
+.navIcon svg {
+  width: 17px;
+  height: 17px;
+}
+
+.navLabel {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+}
+
+.navShortcut {
+  position: relative;
+  z-index: 1;
+  color: var(--text-4);
+  font-size: 10.5px;
+  opacity: 0;
+  transition: opacity var(--dur-fast);
+}
+
+.navItem:hover .navShortcut {
+  opacity: 1;
+}
+
+.recent {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-top: 18px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.sectionLabel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px 6px 10px;
+  color: var(--text-3);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.recentItem {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  min-height: 30px;
+  border-radius: var(--radius-sm);
+  color: var(--text-3);
+  font-size: var(--text-sm);
+  transition:
+    color var(--dur-fast),
+    background-color var(--dur-fast);
+}
+
+.recentLink {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 10px;
+  color: inherit;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recentMenu {
+  display: flex;
+  opacity: 0;
+  transition: opacity var(--dur-fast);
+}
+
+.recentItem:hover .recentMenu,
+.recentMenu:focus-within,
+.recentMenu:has([data-state='open']) {
+  opacity: 1;
+}
+
+.recentRename {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 9px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--bg-2);
+  color: var(--text-1);
+  font: inherit;
+  outline: none;
+}
+
+.recentItem:hover {
+  color: var(--text-1);
+  background: var(--surface);
+}
+
+.recentActive {
+  color: var(--text-1);
+  background: var(--surface-hover);
+}
+
+.recentEmpty {
+  padding: 4px 10px;
+  color: var(--text-4);
+  font-size: var(--text-sm);
+}
+
+.sidebarFooter {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: auto;
+  padding-top: 10px;
+}
+
+.gpu {
+  --tone: var(--accent);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: 8px;
+  padding: 11px 12px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+}
+
+.collapsed .gpu {
+  padding: 10px 8px;
+}
+
+.gpuHead,
+.gpuFoot {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.gpuName {
+  font-size: var(--text-sm);
+  font-weight: 500;
+}
+
+.gpuUtil {
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}
+
+.gpuBar {
+  height: 4px;
+  border-radius: var(--radius-full);
+  background: var(--bg-4);
+  overflow: hidden;
+}
+
+.gpuFill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--tone);
+  box-shadow: 0 0 10px var(--tone);
+}
+
+.gpuFoot {
+  color: var(--text-3);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* -------------------------------- main -------------------------------- */
+
+.main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--bg-0);
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--topbar-h);
+  padding: 0 14px;
+  flex-shrink: 0;
+}
+
+.topbarSpacer {
+  flex: 1;
+}
+
+.conn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 28px;
+  padding: 0 11px;
+  margin-right: 4px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: var(--text-xs);
+  font-weight: 500;
+}
+
+.connOff {
+  border-color: rgb(248 113 113 / 0.25);
+  color: var(--danger);
+}
+
+.content {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.page {
+  height: 100%;
+}

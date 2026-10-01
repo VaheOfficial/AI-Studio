@@ -1,0 +1,64 @@
+.grid {
+  display: grid;
+  grid-template-columns: repeat(var(--count, 7), 1fr);
+  gap: 4px;
+  padding: 3px;
+  border-radius: var(--radius-md);
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+}
+
+.tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+  height: 52px;
+  padding: 0 0 5px;
+  border: 0;
+  border-radius: calc(var(--radius-md) - 2px);
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  transition: color var(--dur-fast);
+}
+
+.tile:hover,
+.active {
+  color: var(--text-1);
+}
+
+.bg {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--bg-4);
+  box-shadow: var(--shadow-inset);
+}
+
+.shape {
+  position: relative;
+  border-radius: 3px;
+  border: 1.5px solid currentColor;
+  margin-bottom: auto;
+  margin-top: auto;
+  transition:
+    border-color var(--dur-fast),
+    background-color var(--dur-fast),
+    box-shadow var(--dur-base);
+}
+
+.active .shape {
+  border-color: var(--tile-hue, var(--accent));
+  background: color-mix(in srgb, var(--tile-hue, var(--accent)) 18%, transparent);
+  box-shadow: 0 0 10px -2px var(--tile-hue, var(--accent));
+}
+
+.label {
+  position: relative;
+  font-size: 10px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}

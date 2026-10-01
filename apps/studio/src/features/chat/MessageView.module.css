@@ -1,0 +1,194 @@
+.user {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+/* Checkpoint actions: shown while hovering the message (or keyboard-focusing them) */
+.actions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity var(--dur-fast);
+}
+
+.body > .actions {
+  align-self: flex-start;
+  margin-top: -4px;
+}
+
+.user:hover .actions,
+.assistant:hover .actions,
+.actions:focus-within {
+  opacity: 1;
+}
+
+.userBubble {
+  max-width: 78%;
+  padding: 10px 15px;
+  border-radius: 18px 18px 5px 18px;
+  background: linear-gradient(135deg, rgb(139 92 246 / 0.22), rgb(99 102 241 / 0.16));
+  border: 1px solid rgb(167 139 250 / 0.22);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.assistant {
+  display: flex;
+  gap: 14px;
+}
+
+.avatar {
+  position: relative;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  margin-top: 1px;
+  border-radius: 8px;
+  background: conic-gradient(from 180deg, #a78bfa, #22d3ee, #f472b6, #a78bfa);
+  box-shadow: 0 0 16px -2px var(--accent-glow);
+}
+
+.avatar::after {
+  content: '';
+  position: absolute;
+  inset: 5px;
+  border-radius: 4px;
+  background: var(--bg-0);
+}
+
+.avatar[data-streaming] {
+  animation: ui-spin 3s linear infinite;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  padding-top: 2px;
+}
+
+.caret {
+  display: inline-block;
+  width: 8px;
+  height: 16px;
+  margin-top: -6px;
+  border-radius: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent-glow);
+  animation: blink 1s steps(2) infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.thinking {
+  border-left: 2px solid var(--border-strong);
+  padding-left: 12px;
+}
+
+.thinkingHead {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: var(--text-3);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.thinkingHead:hover {
+  color: var(--text-2);
+}
+
+.chev {
+  transition: transform var(--dur-base) var(--ease-out);
+}
+
+.chevOpen {
+  transform: rotate(90deg);
+}
+
+.thinkingBody {
+  margin-top: 6px;
+  color: var(--text-3);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.shimmerText {
+  background: linear-gradient(90deg, var(--text-3) 30%, var(--text-1) 50%, var(--text-3) 70%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: ui-shimmer 2s linear infinite;
+}
+
+.dots {
+  display: flex;
+  gap: 5px;
+  padding: 8px 0;
+}
+
+.dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-2);
+}
+
+.meta {
+  display: flex;
+  align-self: flex-start;
+  gap: 12px;
+  color: var(--text-4);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.userStack {
+  display: flex;
+  max-width: 78%;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.userStack .userBubble {
+  max-width: 100%;
+}
+
+.userImages {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.userImages img {
+  display: block;
+  max-width: 220px;
+  max-height: 180px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  object-fit: cover;
+}
+
+.userImage {
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: zoom-in;
+}

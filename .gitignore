@@ -1,0 +1,11 @@
+node_modules
+dist/
+*.tsbuildinfo
+.DS_Store
+data/
+reference/
+server/.venv/
+__pycache__/
+.vite
+apps/desktop/vendor/
+apps/desktop/release/

@@ -1,0 +1,79 @@
+.iconButton {
+  --size: 32px;
+  display: inline-grid;
+  place-items: center;
+  width: var(--size);
+  height: var(--size);
+  flex-shrink: 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+
+.iconButton svg {
+  width: calc(var(--size) * 0.5);
+  height: calc(var(--size) * 0.5);
+}
+
+.iconButton:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
+.iconButton:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.sm {
+  --size: 26px;
+  border-radius: var(--radius-sm);
+}
+
+.lg {
+  --size: 40px;
+  border-radius: var(--radius-lg);
+}
+
+.ghost:hover:not(:disabled),
+.ghost[data-active] {
+  background: var(--surface-hover);
+  color: var(--text-1);
+}
+
+.secondary {
+  background: var(--bg-3);
+  border-color: var(--border);
+  color: var(--text-1);
+}
+
+.secondary:hover:not(:disabled) {
+  background: var(--bg-4);
+}
+
+.primary {
+  background: var(--accent);
+  color: var(--text-on-accent);
+}
+
+.primary:disabled {
+  opacity: 1;
+  background: var(--bg-3);
+  color: var(--text-4);
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  box-shadow: 0 4px 16px -4px var(--accent-glow);
+}
+
+.danger:hover:not(:disabled) {
+  background: var(--danger-soft);
+  color: var(--danger);
+}

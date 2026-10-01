@@ -1,0 +1,66 @@
+# Packaging for the desktop app. The app bundle holds the Electron shell (src/), the Python server's source, the
+# built web app and one `uv` binary; the Python environment itself is created in the data folder on first launch.
+appId: local.aistudio.desktop
+productName: AI Studio
+directories:
+  output: release
+  buildResources: build
+files:
+  - src/**
+  - package.json
+extraResources:
+  - from: ../../server
+    to: server
+    filter:
+      - studio/**
+      - workers/**
+      - pyproject.toml
+      - '!**/__pycache__/**'
+      - '!**/*.pyc'
+  - from: ../studio/dist
+    to: web
+
+# Each platform adds the `uv` built for it (scripts/fetch-uv.mjs names the folders <node platform>-<arch>; the
+# ${platform} macro can't be used for this, it is the machine doing the build, not the target).
+win:
+  target:
+    - portable # one exe; keeps its data in "AI Studio Data" next to itself
+    - nsis # regular installer; data in %APPDATA%
+  extraResources:
+    - from: vendor/uv/win32-${arch}
+      to: uv
+      filter:
+        - uv.exe
+portable:
+  artifactName: AI-Studio-${version}-portable.${ext}
+nsis:
+  oneClick: false
+  artifactName: AI-Studio-${version}-setup.${ext}
+
+# Built on macOS only (locally or by .github/workflows/desktop.yml).
+mac:
+  target:
+    - dmg
+  category: public.app-category.productivity
+  artifactName: AI-Studio-${version}-mac-${arch}.${ext}
+  # No Developer ID: sign ad hoc (Apple silicon refuses unsigned code) and skip the notarization-only runtime
+  identity: '-'
+  hardenedRuntime: false
+  extendInfo:
+    NSMicrophoneUsageDescription: AI Studio uses the microphone for dictation and for recording voice samples.
+  extraResources:
+    - from: vendor/uv/darwin-${arch}
+      to: uv
+      filter:
+        - uv
+
+linux:
+  target:
+    - AppImage
+  category: Utility
+  artifactName: AI-Studio-${version}-linux-${arch}.${ext}
+  extraResources:
+    - from: vendor/uv/linux-${arch}
+      to: uv
+      filter:
+        - uv

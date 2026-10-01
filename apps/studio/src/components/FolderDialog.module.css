@@ -1,0 +1,68 @@
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pathRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.path {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  height: 320px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-0);
+  overflow-y: auto;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-1);
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.item svg {
+  flex-shrink: 0;
+  color: var(--hue-image);
+}
+
+.item:hover {
+  background: var(--surface-hover);
+}
+
+.item[data-selected] {
+  background: var(--accent-soft);
+}
+
+.empty,
+.error,
+.hint {
+  padding: 8px;
+  color: var(--text-3);
+  font-size: var(--text-xs);
+}
+
+.error {
+  color: var(--danger);
+}

@@ -1,0 +1,386 @@
+.view {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  min-height: 0;
+  height: 100%;
+}
+
+.main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.loading {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 32px;
+}
+
+/* ---- header ---- */
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.titleBlock {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.title {
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.location {
+  color: var(--hue-game);
+  font-size: var(--text-xs);
+}
+
+.model {
+  width: 220px;
+}
+
+/* ---- story ---- */
+
+.story {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.storyInner {
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 28px 24px 16px;
+}
+
+.turn {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.opening {
+  align-self: center;
+  color: var(--hue-game);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--hue-game);
+  font-weight: 500;
+}
+
+.actionText {
+  color: var(--text-1);
+  font-style: italic;
+}
+
+.roll {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.crit {
+  border-color: color-mix(in srgb, var(--warning) 60%, transparent);
+  color: var(--warning);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--warning) 30%, transparent);
+}
+
+.fumble {
+  border-color: color-mix(in srgb, var(--danger) 60%, transparent);
+  color: var(--danger);
+}
+
+.narration {
+  color: var(--text-1);
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.writing {
+  color: var(--text-3);
+  font-style: italic;
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.changes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.change {
+  padding: 2px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  color: var(--text-2);
+  font-size: var(--text-xs);
+}
+
+.good {
+  border-color: color-mix(in srgb, var(--success) 45%, transparent);
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.bad {
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+/* ---- action bar ---- */
+
+.bar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 808px;
+  margin: 0 auto;
+  padding: 12px 24px 18px;
+}
+
+.choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 8px;
+}
+
+.choice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-1);
+  color: var(--text-1);
+  font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast),
+    background-color var(--dur-fast);
+}
+
+.choice:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--hue-game) 60%, transparent);
+  background: color-mix(in srgb, var(--hue-game) 8%, var(--bg-1));
+}
+
+.choice:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.inputRow {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.input {
+  flex: 1;
+}
+
+/* ---- game over ---- */
+
+.over {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  width: calc(100% - 48px);
+  max-width: 760px;
+  margin: 12px auto 18px;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.overDead {
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.overWon {
+  border-color: color-mix(in srgb, var(--success) 45%, transparent);
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.overText {
+  display: flex;
+  flex: 1;
+  min-width: 200px;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.overText strong {
+  color: var(--text-1);
+}
+
+.overText span {
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
+@media (max-width: 1100px) {
+  .view {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+}
+
+/* ---- media ---- */
+
+.scene {
+  width: 100%;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+}
+
+.narrationAudio {
+  max-width: 420px;
+}
+
+.turnTools {
+  display: flex;
+  gap: 4px;
+  margin-left: -8px;
+  opacity: 0.55;
+  transition: opacity var(--dur-fast);
+}
+
+.turn:hover .turnTools,
+.turnTools:focus-within {
+  opacity: 1;
+}
+
+/* ---- combat ---- */
+
+.combatLog {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-1);
+  font-size: var(--text-xs);
+}
+
+.combatRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.combatWho {
+  overflow: hidden;
+  color: var(--text-2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.combatMath {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.combatResult {
+  font-weight: 600;
+}
+
+.combatHit .combatResult {
+  color: var(--danger);
+}
+
+.combatMiss .combatResult {
+  color: var(--text-3);
+}
+
+.combatBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  width: calc(100% - 48px);
+  max-width: 760px;
+  margin: 8px auto 0;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--border));
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--danger) 6%, var(--bg-1));
+}
+
+.combatLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 4px;
+  color: var(--danger);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.combatHp {
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+}
+
+.combatItem {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}

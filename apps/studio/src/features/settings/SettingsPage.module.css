@@ -1,0 +1,28 @@
+.switches {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.defaults {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px 20px;
+}
+
+.storageRow {
+  display: flex;
+  gap: 8px;
+}
+
+.storageRow > :first-child {
+  flex: 1;
+}
+
+.storageJob {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--text-3);
+  font-size: var(--text-xs);
+}

@@ -1,0 +1,172 @@
+.files {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+}
+
+.tree {
+  width: 34%;
+  min-width: 150px;
+  max-width: 260px;
+  padding: 6px 0;
+  border-right: 1px solid var(--border);
+  overflow: auto;
+  scrollbar-width: thin;
+}
+
+.node {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  padding: 3px 8px;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  font-size: var(--text-xs);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.node span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.node:hover {
+  background: var(--surface-hover);
+  color: var(--text-1);
+}
+
+.selected {
+  background: var(--accent-soft);
+  color: var(--text-1);
+}
+
+.node svg {
+  flex-shrink: 0;
+}
+
+.fileIcon {
+  margin-left: 17px;
+  color: var(--text-3);
+}
+
+.dirIcon {
+  color: var(--hue-image);
+}
+
+.chev {
+  color: var(--text-4);
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+
+.chevOpen {
+  transform: rotate(90deg);
+}
+
+.loadingRow {
+  padding: 3px 0;
+  color: var(--text-4);
+}
+
+.treeEmpty,
+.treeError {
+  padding: 8px 12px;
+  color: var(--text-3);
+  font-size: var(--text-xs);
+}
+
+.treeError {
+  color: var(--danger);
+}
+
+.main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.editorBar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 4px 6px 4px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.editorPath {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-1);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta {
+  color: var(--text-4);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.cm {
+  flex: 1;
+}
+
+.editorLoading {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+}
+
+.notice {
+  padding: 6px 12px;
+  background: var(--warning-soft);
+  color: var(--text-2);
+  font-size: var(--text-xs);
+}
+
+.changes {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  overflow: auto;
+}
+
+.change {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.changeHead {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: var(--text-xs);
+}
+
+.added {
+  color: var(--success);
+}
+
+.removed {
+  color: var(--danger);
+}

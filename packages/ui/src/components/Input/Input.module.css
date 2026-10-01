@@ -1,0 +1,120 @@
+.wrap {
+  --h: 34px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  /* let flex parents shrink it below the native input's intrinsic width */
+  min-width: 0;
+  height: var(--h);
+  border-radius: var(--radius-md);
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.2);
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out),
+    background-color var(--dur-fast);
+}
+
+.wrap:hover {
+  border-color: var(--border-strong);
+}
+
+.wrap:focus-within {
+  border-color: var(--border-focus);
+  box-shadow:
+    0 0 0 3px var(--accent-soft),
+    inset 0 1px 2px rgb(0 0 0 / 0.2);
+}
+
+.sm {
+  --h: 28px;
+  font-size: var(--text-sm);
+}
+
+.lg {
+  --h: 42px;
+  font-size: var(--text-lg);
+  border-radius: var(--radius-lg);
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0 12px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+}
+
+.input::placeholder,
+.textarea::placeholder {
+  color: var(--text-3);
+}
+
+.iconLeft {
+  display: inline-flex;
+  padding-left: 11px;
+  color: var(--text-3);
+}
+
+.iconLeft + .input {
+  padding-left: 8px;
+}
+
+.iconLeft svg,
+.trailing svg {
+  width: 15px;
+  height: 15px;
+}
+
+.trailing {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: 6px;
+  color: var(--text-3);
+}
+
+.invalid,
+.invalid:hover {
+  border-color: rgb(248 113 113 / 0.55);
+}
+
+.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.textarea {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.2);
+  outline: 0;
+  resize: vertical;
+  line-height: 1.55;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out);
+}
+
+.textarea:hover {
+  border-color: var(--border-strong);
+}
+
+.textarea:focus {
+  border-color: var(--border-focus);
+  box-shadow:
+    0 0 0 3px var(--accent-soft),
+    inset 0 1px 2px rgb(0 0 0 / 0.2);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
