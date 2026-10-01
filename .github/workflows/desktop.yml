@@ -1,0 +1,53 @@
+# Builds the desktop app for every system on that system's own runner (a macOS .dmg can only be made on macOS).
+# Run it from the Actions tab, or push a tag like v0.1.0; the packages are attached to the run as artifacts.
+name: Desktop app
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-latest
+            uv: darwin-arm64 darwin-x64
+            builder: --mac --arm64 --x64
+          - name: Windows
+            os: windows-latest
+            uv: win32-x64
+            builder: --win --x64
+          - name: Linux
+            os: ubuntu-latest
+            uv: linux-x64
+            builder: --linux --x64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4 # version from package.json "packageManager"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Build the web app
+        run: pnpm --filter studio build
+      - name: Fetch uv for the target
+        working-directory: apps/desktop
+        run: node scripts/fetch-uv.mjs ${{ matrix.uv }}
+      - name: Package
+        working-directory: apps/desktop
+        run: pnpm exec electron-builder ${{ matrix.builder }} --publish never
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AI-Studio-${{ matrix.name }}
+          if-no-files-found: error
+          path: |
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.AppImage
