@@ -44,6 +44,7 @@ export default function SettingsPage() {
     values: { ...settings, ...draft },
     set: (k, v) => setDraft((d) => ({ ...d, [k]: v })),
     secret: (key) => ({
+      name: key,
       stored: settings[key] === MASK,
       edit: secrets[key],
       onEdit: (v) => setSecrets((x) => ({ ...x, [key]: v })),

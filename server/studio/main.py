@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.responses import Response
 from starlette.types import Scope
 
-from . import (__version__, automations, config, connectors, db, events, imaging, memories, ollama, openrouter_catalog, openrouter_usage, storage,
+from . import (__version__, automations, config, connectors, db, events, imaging, library, memories, ollama, openrouter_catalog, openrouter_usage, storage,
                workspace)
 from .agent import agent
 from .agent import pykernel
@@ -74,6 +74,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     config.ensure_dirs()
     db.init()
     storage.apply()  # a moved models folder (Settings → Storage)
+    library.backfill()  # every model's folder says what it holds, so another copy of the studio can pick it up
     openrouter_catalog.init()
     openrouter_usage.init()
     imaging.init()

@@ -69,10 +69,38 @@ def _check(target: Path) -> None:
         raise StorageError("Wait for running downloads and generations to finish first")
 
 
-def move(target_path: str) -> Job:
+def move(target_path: str, adopt: bool = False) -> Job:
     target = Path(target_path.strip().strip('"'))
+    if adopt:
+        return use(target)
     _check(target)
     return jobs.submit("storage", f"Move models to {target}", lambda ctx: _move(ctx, target.resolve()))
+
+
+def use(target: Path) -> Job:
+    """Make an existing folder the models folder without moving anything, and register the models in it: a
+    folder another copy of the studio keeps its models in. Models already installed stay where they are and
+    stay installed; new downloads go to the new folder."""
+    if not target.is_absolute():
+        raise StorageError("Give a full path, e.g. D:\\AI Models")
+    if not target.is_dir():
+        raise StorageError(f"{target} is not a folder")
+    target = target.resolve()
+    if target == config.MODELS_DIR.resolve():
+        raise StorageError("That is the models folder already")
+    if jobs.find_active(lambda j: j.kind in ("download", "storage")):
+        raise StorageError("Wait for running downloads to finish first")
+
+    def run(ctx: JobContext) -> None:
+        from . import library  # late: library reads the models folder this sets
+
+        db.set_setting_value(SETTING, None if target == DEFAULT_MODELS_DIR.resolve() else str(target))
+        config.MODELS_DIR = target
+        ctx.update(message="Looking for models…", progress=-1)
+        found = library.rescan()
+        ctx.update(progress=1.0, message=f"Models folder is now {target}: {len(found.added)} model{'' if len(found.added) == 1 else 's'} found there")
+
+    return jobs.submit("storage", f"Use models in {target}", run)
 
 
 def _unload_local() -> None:

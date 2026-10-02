@@ -5,7 +5,8 @@ import asyncio
 from fastapi import HTTPException
 
 from .. import __version__, capabilities, settings, storage, system
-from ..schemas import Capabilities, HealthResponse, Job, MoveModelsRequest, Settings, SettingsUpdate, StorageInfo, SystemInfo
+from ..schemas import (Capabilities, HealthResponse, Job, MoveModelsRequest, SecretValue, Settings, SettingsUpdate,
+                       StorageInfo, SystemInfo)
 from . import StudioRouter
 
 router = StudioRouter(prefix="/api")
@@ -39,6 +40,16 @@ async def put_settings(patch: SettingsUpdate) -> Settings:
         raise HTTPException(400, str(exc)) from exc
 
 
+@router.get("/settings/secrets/{name}", response_model=SecretValue)
+async def get_secret(name: str) -> SecretValue:
+    """A stored key or token in the clear, when the user asks to see it (to copy it to another copy of the studio).
+    Only pages of the studio itself can read it: other origins get no CORS headers."""
+    try:
+        return SecretValue(value=settings.secret(name))
+    except settings.SettingsError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
 @router.get("/storage", response_model=StorageInfo)
 async def get_storage() -> StorageInfo:
     return await asyncio.to_thread(storage.info)
@@ -46,8 +57,9 @@ async def get_storage() -> StorageInfo:
 
 @router.post("/storage/models-dir", response_model=Job)
 async def move_models(body: MoveModelsRequest) -> Job:
-    """Move every model into another folder (e.g. an SSD); runs as a ``storage`` job."""
+    """Move every model into another folder (e.g. an SSD), or with ``adopt`` use a folder of models as it is;
+    runs as a ``storage`` job."""
     try:
-        return await asyncio.to_thread(storage.move, body.path)
+        return await asyncio.to_thread(storage.move, body.path, body.adopt)
     except storage.StorageError as exc:
         raise HTTPException(409 if "Wait" in str(exc) else 400, str(exc)) from exc

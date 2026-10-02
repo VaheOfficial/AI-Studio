@@ -248,9 +248,28 @@ export interface StorageInfo {
   data_dir: string
 }
 
-/** `POST /storage/models-dir`: move every model into `path` (an empty or new folder). Returns a `storage` Job. */
+/**
+ * `POST /storage/models-dir`: move every model into `path` (an empty or new folder). With `adopt` nothing is moved:
+ * `path` becomes the models folder as it is and the models found in it are registered (a folder another copy of the
+ * studio keeps its models in). Returns a `storage` Job.
+ */
 export interface MoveModelsRequest {
   path: string
+  adopt?: boolean
+}
+
+/** `POST /models/rescan`: what bringing the list of installed models in line with the models folder changed. */
+export interface RescanResult {
+  added: InstalledModel[]
+  /** Names of models whose folder is gone. */
+  removed: string[]
+  /** Folders that hold something the studio can't tell to be a model. */
+  unrecognized: string[]
+}
+
+/** `GET /settings/secrets/{name}`: a stored key or token as it is, shown when the user asks to see it. */
+export interface SecretValue {
+  value: string
 }
 
 /** Local engines that run GGUF language models. */

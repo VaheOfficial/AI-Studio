@@ -2,7 +2,7 @@
   "name": "studio-desktop",
   "productName": "Grom AI Studio",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Grom AI Studio as a desktop app: one window that runs the local server and shows its UI.",
   "author": "Grom",
   "type": "module",

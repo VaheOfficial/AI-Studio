@@ -1,8 +1,8 @@
 import { useSearchParams } from 'react-router'
-import { Boxes, HardDrive } from 'lucide-react'
-import { AnimatedNumber, SegmentedControl, TabPanel, Tabs, type Segment, type TabItem } from '@studio/ui'
+import { Boxes, HardDrive, RefreshCw } from 'lucide-react'
+import { AnimatedNumber, Button, SegmentedControl, TabPanel, Tabs, Tooltip, type Segment, type TabItem } from '@studio/ui'
 import { useLocalBackends, type RepoRef } from '../../api/hub'
-import { useSettings, useUpdateSettings } from '../../api/hooks'
+import { useRescanModels, useSettings, useUpdateSettings } from '../../api/hooks'
 import { useLive } from '../../api/live'
 import type { ModelKind } from '../../api/types'
 import { JobList } from '../../components/JobRow'
@@ -50,6 +50,7 @@ export default function ModelsPage() {
   const openRepo = (r: RepoRef) => setParam('open', `${r.source}:${r.id}`)
 
   const synced = useLive((st) => st.synced)
+  const rescan = useRescanModels()
   const models = useLive((st) => st.models)
   const jobs = useLive((st) => st.jobs)
   const system = useLive((st) => st.system)
@@ -97,6 +98,13 @@ export default function ModelsPage() {
                 onValueChange={(v) => setParam('kind', v)}
                 segments={KIND_SEGMENTS}
               />
+              <Tooltip content="Look through the models folder again: models put there by another copy of the studio or by hand are added, ones whose folder is gone are removed">
+                <span>
+                  <Button size="sm" variant="ghost" iconLeft={<RefreshCw />} loading={rescan.isPending} onClick={() => rescan.mutate()}>
+                    Rescan
+                  </Button>
+                </span>
+              </Tooltip>
               <DefaultEngine />
             </>
           )}

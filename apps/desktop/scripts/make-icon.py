@@ -1,5 +1,6 @@
-"""Draws the app icon to build/icon.png: the logo on a dark rounded tile with a crimson glow behind it.
-electron-builder turns that PNG into the .ico / .icns each platform needs. The mark comes from build/logo.png
+"""Draws the app icon to build/icon.png and build/icon.ico: the logo on a dark rounded tile with a crimson glow
+behind it. electron-builder uses the .ico for Windows and turns the PNG into the .icns macOS needs; a run from the
+source tree on Windows names the .ico as its taskbar icon. The mark comes from build/logo.png
 (its alpha channel is the shape). Run with any Python that has Pillow:
 
     server/.venv/Scripts/python.exe apps/desktop/scripts/make-icon.py
@@ -43,8 +44,12 @@ def main() -> None:
 
     icon.putalpha(ImageChops.multiply(icon.getchannel("A"), tile_mask))
     out = BUILD / "icon.png"
-    icon.resize((SIZE, SIZE), Image.LANCZOS).save(out)
+    final = icon.resize((SIZE, SIZE), Image.LANCZOS)
+    final.save(out)
     print(out)
+    ico = BUILD / "icon.ico"
+    final.save(ico, sizes=[(s, s) for s in (16, 24, 32, 48, 64, 128, 256)])
+    print(ico)
 
 
 main()

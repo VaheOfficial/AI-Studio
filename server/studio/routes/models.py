@@ -6,12 +6,12 @@ import asyncio
 
 from fastapi import HTTPException, Response
 
-from .. import catalog, db, llamacpp, lmstudio, ollama
+from .. import catalog, db, library, llamacpp, lmstudio, ollama
 from ..jobs import JobContext, JobError, jobs
 from ..models import ModelError, models
 from ..runtimes import RUNTIMES, WorkerError, runtimes
 from ..runtimes import envs
-from ..schemas import CatalogEntry, InstalledModel, Job, ModelPatch, RuntimeInfo
+from ..schemas import CatalogEntry, InstalledModel, Job, ModelPatch, RescanResult, RuntimeInfo
 from . import StudioRouter
 
 router = StudioRouter(prefix="/api")
@@ -29,6 +29,16 @@ async def get_catalog() -> list[CatalogEntry]:
 @router.get("/models", response_model=list[InstalledModel])
 async def list_models() -> list[InstalledModel]:
     return await asyncio.to_thread(models.list)
+
+
+@router.post("/models/rescan", response_model=RescanResult)
+async def rescan_models() -> RescanResult:
+    """Bring the list of installed models in line with the models folder (models put there by another copy of the
+    studio or by hand are registered; models whose folder is gone are forgotten)."""
+    try:
+        return await asyncio.to_thread(library.rescan)
+    except library.LibraryError as exc:
+        raise HTTPException(409, str(exc)) from exc
 
 
 @router.post("/models/{catalog_id}/install", response_model=Job)

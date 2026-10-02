@@ -2,6 +2,11 @@
 # Run it from the Actions tab to get the packages as artifacts of the run; push a tag like v0.1.0 to also publish
 # them as a GitHub release (the tag sets the version). A release also carries what installed apps update from:
 # `update.json` names the update bundle and the packages, and apps find it on the latest release.
+#
+# Not every release builds the packages. They are built when the release is an x.y.0, or when the shell changed
+# since the latest release (the Electron code, its version, the packaging: what an installed app cannot update in
+# place). Any other release publishes only the update bundle, which installed apps apply by themselves, and carries
+# the latest release's packages over unchanged: someone installing from them gets the update on first start.
 name: Desktop app
 
 on:
@@ -12,6 +17,8 @@ on:
 jobs:
   build:
     name: ${{ matrix.name }}
+    needs: update
+    if: needs.update.outputs.full == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -63,6 +70,9 @@ jobs:
   update:
     name: Update bundle
     runs-on: ubuntu-latest
+    outputs:
+      full: ${{ steps.plan.outputs.full }}
+      previous: ${{ steps.plan.outputs.previous }}
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -79,6 +89,29 @@ jobs:
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then version="${GITHUB_REF_NAME#v}"; fi
           shell=$(node apps/desktop/scripts/shell-id.mjs)
           python3 apps/desktop/scripts/make-update.py bundle "$version" update --shell "$shell" --repo "$GITHUB_REPOSITORY"
+      - name: Decide whether the packages have to be built
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Built unless this is a small release (not an x.y.0) on the same shell as the latest release, and that
+          # release has packages to carry over. A run from the Actions tab always builds.
+          full=true
+          previous=
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            version="${GITHUB_REF_NAME#v}"
+            shell=$(node apps/desktop/scripts/shell-id.mjs)
+            previous=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName 2>/dev/null || true)
+            if [[ "${version##*.}" != "0" && -n "$previous" && "$previous" != "$GITHUB_REF_NAME" ]] &&
+               gh release download "$previous" --repo "$GITHUB_REPOSITORY" --pattern update.json --dir previous 2>/dev/null; then
+              read -r old packages < <(python3 -c "import json; m = json.load(open('previous/update.json')); print(m.get('shell') or '-', len(m.get('packages') or {}))")
+              if [[ "$old" == "$shell" && "$packages" != "0" ]]; then full=false; fi
+              echo "latest release $previous: shell $old, $packages packages; this one: shell $shell"
+            fi
+          fi
+          echo "full=$full" >> "$GITHUB_OUTPUT"
+          echo "previous=$previous" >> "$GITHUB_OUTPUT"
+          if [[ "$full" == true ]]; then echo "The packages are built"; else echo "The packages are carried over from $previous"; fi
       - uses: actions/upload-artifact@v7
         with:
           name: Grom-AI-Studio-update
@@ -87,7 +120,8 @@ jobs:
 
   release:
     name: Release
-    if: startsWith(github.ref, 'refs/tags/v')
+    # Also when the builds were skipped (a small release); never when one of them failed
+    if: ${{ !cancelled() && startsWith(github.ref, 'refs/tags/v') && needs.update.result == 'success' && (needs.build.result == 'success' || needs.build.result == 'skipped') }}
     needs: [build, update]
     runs-on: ubuntu-latest
     permissions:
@@ -100,13 +134,28 @@ jobs:
         with:
           path: release-files
           merge-multiple: true
+      - name: Carry the latest release's packages over
+        if: needs.update.outputs.full != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREVIOUS: ${{ needs.update.outputs.previous }}
+        run: |
+          gh release download "$PREVIOUS" --repo "$GITHUB_REPOSITORY" --dir release-files --pattern '*.exe' --pattern '*.dmg' --pattern '*-mac-*.zip' --pattern '*.AppImage'
+          ls -la release-files
       - name: List the packages in update.json
         run: python3 apps/desktop/scripts/make-update.py packages release-files
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
+          FULL: ${{ needs.update.outputs.full }}
+          PREVIOUS: ${{ needs.update.outputs.previous }}
         run: |
-          cat > notes.md <<'EOF'
+          : > notes.md
+          if [[ "$FULL" != "true" ]]; then
+            echo "A small update: installed apps apply it by themselves (Settings → Updates). The packages below are the ones from $PREVIOUS; a fresh install from them updates itself on first start." >> notes.md
+            echo >> notes.md
+          fi
+          cat >> notes.md <<'EOF'
           ## Downloads
 
           | System | File ending in |

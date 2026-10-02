@@ -273,9 +273,26 @@ class StorageInfo(BaseModel):
 
 
 class MoveModelsRequest(BaseModel):
-    """``POST /api/storage/models-dir``: move every model into ``path`` (an empty or new folder)."""
+    """``POST /api/storage/models-dir``: move every model into ``path`` (an empty or new folder). With ``adopt``
+    nothing is moved: ``path`` becomes the models folder as it is and the models found in it are registered (a
+    folder another copy of the studio keeps its models in)."""
 
     path: str = Field(min_length=1, max_length=1000)
+    adopt: bool = False
+
+
+class RescanResult(BaseModel):
+    """``POST /api/models/rescan``: what bringing the list in line with the models folder changed."""
+
+    added: list[InstalledModel]
+    removed: list[str]  # names of models whose folder is gone
+    unrecognized: list[str]  # folders that hold something the studio can't tell to be a model
+
+
+class SecretValue(BaseModel):
+    """``GET /api/settings/secrets/{name}``: a stored key or token as it is, for the user to copy elsewhere."""
+
+    value: str
 
 
 class ChatPrice(BaseModel):

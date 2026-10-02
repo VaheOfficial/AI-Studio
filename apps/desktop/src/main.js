@@ -581,6 +581,25 @@ function contextMenu(contents, params) {
 const DEV_ICON = path.join(here, '..', 'build', 'icon.png')
 const devIcon = !packaged && fs.existsSync(DEV_ICON) ? DEV_ICON : null
 
+// What Windows files the taskbar button under. The installed app's is the id its Start menu shortcut carries, so
+// its button shows that shortcut's name and icon. A run from the source tree gets an id of its own: with the same
+// one, pinning that run to the taskbar made a shortcut to electron.exe ("Electron", Electron's icon) that the
+// installed app's window then sat under as well.
+const APP_ID = packaged ? 'com.grom.aistudio' : 'com.grom.aistudio.dev'
+const DEV_ICO = path.join(here, '..', 'build', 'icon.ico')
+
+/** A run from the source tree, on Windows: say what pinning its taskbar button should make (name, icon, and
+ *  a command that starts this app rather than a bare Electron). */
+function nameDevWindow(window) {
+  if (packaged || process.platform !== 'win32') return
+  window.setAppDetails({
+    appId: APP_ID,
+    relaunchCommand: `"${process.execPath}" "${path.join(here, '..')}"`,
+    relaunchDisplayName: 'Grom AI Studio (from source)',
+    ...(fs.existsSync(DEV_ICO) ? { appIconPath: DEV_ICO, appIconIndex: 0 } : {}),
+  })
+}
+
 function createWindow() {
   // Most of the screen, whatever its size; on an ultrawide one, no wider than 16:9
   const area = screen.getPrimaryDisplay().workAreaSize
@@ -604,6 +623,7 @@ function createWindow() {
     win = null
     app.quit()
   })
+  nameDevWindow(win)
   win.on('resize', fitSplash)
   // Links to the web open in the user's browser; the window only ever shows the studio
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -703,8 +723,8 @@ if (!app.requestSingleInstanceLock()) {
     win.focus()
   })
 
-  // Windows groups taskbar buttons by this id and shows the window's icon for it rather than the executable's
-  if (process.platform === 'win32') app.setAppUserModelId('com.grom.aistudio')
+  // Windows groups taskbar buttons by this id (see APP_ID)
+  if (process.platform === 'win32') app.setAppUserModelId(APP_ID)
   // Where the server reaches the agent's browser; has to be said before the app is ready
   app.commandLine.appendSwitch('remote-debugging-port', String(BROWSER_PORT))
 

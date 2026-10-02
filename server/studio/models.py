@@ -6,7 +6,7 @@ import shutil
 import time
 from pathlib import Path
 
-from . import (catalog, config, db, events, hf, image_models, llamacpp, lmstudio, ollama, openrouter_catalog,
+from . import (catalog, config, db, events, hf, image_models, library, llamacpp, lmstudio, ollama, openrouter_catalog,
                settings, system)
 from .catalog import GIB, Spec
 from .hub import variants
@@ -254,6 +254,7 @@ class ModelManager:
                     db.delete_installed(other.id)
                     bus.publish(EvModelRemoved(id=other.id))
         db.upsert_installed(m)
+        library.write_manifest(m)
         bus.publish(EvModelUpdate(model=m))
 
     # ------------------------------ delete ------------------------------

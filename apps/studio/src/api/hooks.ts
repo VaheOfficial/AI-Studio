@@ -17,6 +17,7 @@ import type {
   MessageRef,
   ModelKind,
   ModelPatch,
+  RescanResult,
   MusicRequest,
   Output,
   OutputKind,
@@ -99,6 +100,24 @@ export function useModelPower() {
       api.post<InstalledModel>(`/models/${encodeURIComponent(id)}/${action}`),
     onSuccess: (m) => useLive.getState().upsertModel(m),
     onError: onError('Model action failed'),
+  })
+}
+
+/** Bring the list of installed models in line with the models folder (the new and gone ones arrive as pushes too). */
+export function useRescanModels() {
+  return useMutation({
+    mutationFn: () => api.post<RescanResult>('/models/rescan'),
+    onSuccess: (r) => {
+      for (const m of r.added) useLive.getState().upsertModel(m)
+      const parts = [
+        r.added.length && `${r.added.length} found`,
+        r.removed.length && `${r.removed.length} no longer there`,
+        r.unrecognized.length && `${r.unrecognized.length} folder${r.unrecognized.length === 1 ? '' : 's'} not recognized (${r.unrecognized.slice(0, 3).join(', ')}${r.unrecognized.length > 3 ? '…' : ''})`,
+      ].filter(Boolean)
+      if (r.added.length || r.removed.length) toast.success('Library rescanned', parts.join(' · '))
+      else toast.info('Library is up to date', parts.join(' · ') || 'Every model in the models folder is listed.')
+    },
+    onError: onError('Could not rescan the models folder'),
   })
 }
 

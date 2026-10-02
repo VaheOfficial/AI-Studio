@@ -40,6 +40,12 @@ On any system, a folder named `Grom AI Studio Data` next to the app (the `.app` 
 when it exists, and `STUDIO_DATA_DIR` overrides everything. The folder holds the Python environment, settings,
 chats, models and outputs; deleting it resets the app.
 
+Two copies on one computer (an installed one and a portable one, or a run from source) each have their own data
+folder. They can share one models folder: Settings → Storage → Use existing makes a folder that already holds models
+the models folder as it is (nothing is moved). Every model's folder says what it holds (`studio-model.json`), and
+Models → Rescan lists what the other copy installed there since. Keys and tokens are copied by hand: the eye next to
+a saved one in Settings shows it.
+
 The app was called "AI Studio" before. A data folder from then (`AI Studio Data` next to the app, or
 `AI Studio/data` in the per-user application data folder) is still picked up when no folder with the new name
 exists, so updating keeps settings, chats and the Python environment.
@@ -68,6 +74,12 @@ a long reply or an automation's run finished), the app shows a system notificati
 (on macOS the dock icon bounces) until the window is looked at. Clicking the notification brings the window forward
 on the chat it is about. On Windows the notification itself needs the installed app (its Start menu entry is what
 Windows files notifications under); a portable copy or a run from source still flashes.
+
+On Windows the installed app's taskbar button goes by the id of its Start menu shortcut (`com.grom.aistudio`), which
+gives it the app's name and icon when pinned. A run from the source tree uses an id of its own
+(`com.grom.aistudio.dev`) and tells Windows what pinning it should create ("Grom AI Studio (from source)", the
+app's icon, a command that starts this app). With one shared id, a pin made from a source run was a shortcut to
+`electron.exe`, and the installed app's window showed up under it as "Electron".
 
 Right-clicking opens a menu that fits what was clicked: spelling corrections and "Add to dictionary" on a
 misspelled word, the editing commands in a text field, copy on selected text, and open, copy or save for links and
@@ -101,6 +113,13 @@ Actions tab ("Desktop app" → Run workflow); each job attaches its packages to 
 To publish a release, push a tag: `git tag v0.2.0` then `git push origin v0.2.0`. The same builds run with the
 tag as the version, and a GitHub release named after the tag is created with every package attached, so they
 can be downloaded from the repository's Releases page.
+
+Not every release builds the packages. They are built for an x.y.0, and for any release whose shell differs from
+the latest release's (see "In-app updates": the shell is what an installed app cannot update in place). A small
+release on the same shell (v0.2.1 after v0.2.0) builds only the update bundle, which takes a few minutes instead of
+three systems' builds, and attaches the latest release's packages again unchanged. Installed apps apply the bundle
+by themselves; someone installing from the carried-over packages gets the update on first start. The "Update
+bundle" job decides and says which it is in its log.
 
 ### In-app updates
 

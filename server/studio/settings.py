@@ -31,6 +31,16 @@ class SettingsError(ValueError):
     pass
 
 
+def secret(name: str) -> str:
+    """A stored key or token as it is (the settings themselves only ever say that one is set)."""
+    if name not in SECRET_FIELDS:
+        raise SettingsError(f"'{name}' is not a key or token")
+    value = getattr(load(), name)
+    if not value:
+        raise SettingsError("Nothing is stored for it")
+    return str(value)
+
+
 def update(patch: SettingsUpdate) -> Settings:
     changes = patch.model_dump(exclude_unset=True)
     data_dir = changes.pop("data_dir", None)

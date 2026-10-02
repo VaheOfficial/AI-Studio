@@ -28,8 +28,9 @@ The single realtime channel; the UI never polls. Each frame is one JSON object.
 | GET | `/api/capabilities` | `Capabilities` — what this machine can do: platform, GPU kind and, per feature (`image`, `voice`, `music`, `video`, `dub`, `game`, `llamacpp`), whether it is available locally or through a configured cloud provider, with the reason when it is not. Navigation, area sections and the agent's tool list follow it; it changes when a cloud key is saved. |
 | GET | `/api/settings` | `Settings` (secrets masked as `"•••"` when set, omitted otherwise) |
 | PUT | `/api/settings` | `Settings` — partial update; sending `""` for a secret clears it |
+| GET | `/api/settings/secrets/{name}` | `SecretValue` (`value`): a stored key or token in the clear, for the Settings page's 'show' button (to copy it to another copy of the studio). `404` when the name is not a secret or nothing is stored |
 | GET | `/api/storage` | `StorageInfo` — the models folder, its size and the free space on its drive |
-| POST | `/api/storage/models-dir` | `MoveModelsRequest` → `Job` (kind=`storage`): unloads local models, moves the models folder into an empty/new folder (rename on the same drive, copy + delete across drives), rewrites installed models' paths and saves the new folder. Ollama and LM Studio keep their own stores. |
+| POST | `/api/storage/models-dir` | `MoveModelsRequest` → `Job` (kind=`storage`): unloads local models, moves the models folder into an empty/new folder (rename on the same drive, copy + delete across drives), rewrites installed models' paths and saves the new folder. Ollama and LM Studio keep their own stores. With `adopt: true` nothing is moved: the folder (which may already hold models) becomes the models folder and is rescanned; models installed elsewhere stay installed |
 
 A generation feature is local when the machine has an NVIDIA GPU (the model runtimes are CUDA builds). Without one,
 chat, the agent workspace, automations, connectors and memory work unchanged; `image` and `voice` remain available
@@ -51,6 +52,7 @@ only ever used when named here or picked on a page (they bill per use).
 | GET | `/api/models` | | `InstalledModel[]` |
 | POST | `/api/models/{catalog_id}/install` | | `Job` (kind=download; also ensures runtime env) |
 | DELETE | `/api/models/{id}` | | `204` — unloads, deletes files (`ollama rm` for Ollama models; only the model's own files in LM Studio's library) |
+| POST | `/api/models/rescan` | | `RescanResult` (`added`, `removed`, `unrecognized`): brings the list in line with the models folder. Folders that hold a model and aren't listed are registered, from their `studio-model.json` (written into every model's folder when it is installed) or, without one, from what they contain; models of that folder whose own folder is gone are forgotten. Unfinished downloads are left alone. `409` when the folder can't be read |
 | PATCH | `/api/models/{id}` | `ModelPatch` (`text_encoder`: `full` \| `8bit` \| `4bit`) | `InstalledModel` — how a local image pipeline holds its text encoder (see [`docs/api/image.md`](api/image.md)); unloads it if loaded. `400` for a model without a large text encoder |
 | POST | `/api/models/{id}/load` | | `InstalledModel` |
 | POST | `/api/models/{id}/unload` | | `InstalledModel` |
