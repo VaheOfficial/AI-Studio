@@ -94,12 +94,14 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v7
+      # Into a folder of their own: the checkout already has a `packages` folder (the workspace's), and everything
+      # in the folder named here is attached to the release
       - uses: actions/download-artifact@v8
         with:
-          path: packages
+          path: release-files
           merge-multiple: true
       - name: List the packages in update.json
-        run: python3 apps/desktop/scripts/make-update.py packages packages
+        run: python3 apps/desktop/scripts/make-update.py packages release-files
       - name: Publish the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -121,4 +123,4 @@ jobs:
           The builds are not signed with a developer certificate. On macOS, the first time, allow the app under
           System Settings → Privacy & Security → Open Anyway. On Windows, SmartScreen may ask once (More info → Run anyway).
           EOF
-          gh release create "$GITHUB_REF_NAME" packages/* --repo "$GITHUB_REPOSITORY" --title "Grom AI Studio $GITHUB_REF_NAME" --notes-file notes.md --generate-notes
+          gh release create "$GITHUB_REF_NAME" release-files/* --repo "$GITHUB_REPOSITORY" --title "Grom AI Studio $GITHUB_REF_NAME" --notes-file notes.md --generate-notes
