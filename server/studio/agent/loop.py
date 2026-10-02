@@ -16,19 +16,22 @@ from .. import db, events, openrouter_usage, settings
 from ..events import bus
 from ..schemas import (ActiveTurn, AgentMessage, AgentSession, ContextUsage, EvAgent, EvContext, EvDone, EvError,
                        EvMessageStart, EvTextDelta, EvThinkingDelta, EvTitle, EvToolApproval, EvToolCall,
-                       EvSpeed, EvToolProgress, EvToolResult, EvTurnStart, EvUsage, ThinkingPart, ToolCall)
+                       EvSpeed, EvTokens, EvToolDraft, EvToolProgress, EvToolResult, EvTurnStart, EvUsage,
+                       ThinkingPart, TokenUsage, ToolCall)
 from ..schemas_workspace import QuestionDisplay
 from ..workspace import state as workspace_state
 from . import context, history, images, prompt, textcalls, tools
 from .providers import Provider, get_provider
-from .types import (Call, Message, ProviderError, StepEnd, TextDelta, ThinkingDelta, ToolContext, ToolOutcome,
-                    Usage)
+from .types import (Call, CallDraft, Message, ProviderError, StepEnd, TextDelta, ThinkingDelta, ToolContext,
+                    ToolOutcome, Usage)
 
 MAX_STEPS = 50
 # Completion check (Taskmaster): when the agent stops a tool-using turn, it gets a checklist and must answer with a
 # verdict — [[DONE: yes]] ends the turn, [[DONE: no]] means it keeps working. Only the last verdict counts, since small
 # models also echo the instructions. Local models often announce the next action ("Proceeding with the plan...") and
-# stop without calling a tool; the check sends them back to work.
+# stop without calling a tool; the check sends them back to work. Each check is one more full-size request, so by
+# default only models running on this machine get it (Settings.agent_completion_check).
+_LOCAL_PROVIDERS = ("ollama", "llamacpp", "lmstudio")
 MAX_CHECKS = 3  # consecutive checks without progress before the turn ends anyway
 _VERDICT_RE = re.compile(r"\[\[\s*DONE\s*(?::\s*(yes|no))?\s*\]\]", re.IGNORECASE)
 _ANNOUNCES = re.compile(
@@ -36,8 +39,7 @@ _ANNOUNCES = re.compile(
     r"[^.!?\n]*[.!:…]*|\.\.\.|…|:)\s*$", re.IGNORECASE)
 DENIED = "User denied this action"
 DEFAULT_TITLE = "New chat"
-_TITLE_SYSTEM = ("Write a 3-6 word title for this conversation. Reply with the title only: no quotes, no "
-                 "punctuation at the end.")
+DRAFT_EVERY_S = 0.2  # how often a tool call being written is reported
 
 
 class TurnBusy(Exception):
@@ -64,6 +66,12 @@ class Turn:
         self.task: asyncio.Task[None] | None = None
         self.finished = False
         self.stopped = False  # ended by agent.stop (user Stop, session deletion or shutdown)
+        self.titled = False  # the chat got its title in this turn
+        # The turn's stopwatch: when it began, the seconds it has spent waiting for the user (approvals, questions),
+        # which are not counted as work, and since when it is waiting right now
+        self.started = time.monotonic()
+        self.waited = 0.0
+        self.waiting_since: float | None = None
         self.listener = listener  # server-side observer of this turn's events (background tasks)
 
     def next_seq(self) -> int:
@@ -75,8 +83,24 @@ class Turn:
         if self.listener is not None:
             self.listener(event)
 
+    def worked(self) -> float:
+        """Seconds of work so far: the time since the turn began, without its waits for the user."""
+        now = time.monotonic()
+        waiting = now - self.waiting_since if self.waiting_since is not None else 0.0
+        return round(max(0.0, now - self.started - self.waited - waiting), 1)
+
+    async def wait_for_user(self, fut: asyncio.Future[Any]) -> Any:
+        """Wait for the user's approval or answer, off the stopwatch."""
+        self.waiting_since = time.monotonic()
+        try:
+            return await fut
+        finally:
+            self.waited += time.monotonic() - self.waiting_since
+            self.waiting_since = None
+
     def snapshot(self) -> ActiveTurn:
         message = self.reply.model_copy(deep=True)
+        message.elapsed_s = self.worked()  # so far: a client joining now starts its clock from here
         message.thinking = "".join(self.thinking) or None
         message.tool_calls = message.tool_calls or None
         return ActiveTurn(session_id=self.session.id, user_message=self.user_message.model_copy(deep=True),
@@ -145,6 +169,11 @@ class AgentService:
         if task is not None:
             await asyncio.wait({task}, timeout=timeout)
 
+    def busy(self, session_id: str) -> bool:
+        """A reply is being written in this chat."""
+        turn = self._turns.get(session_id)
+        return turn is not None and not turn.finished
+
     def active_turns(self) -> list[ActiveTurn]:
         return [t.snapshot() for t in self._turns.values() if not t.finished]
 
@@ -166,6 +195,9 @@ class AgentService:
             db.save_message(session.id, reply.model_copy(update={"tool_calls": reply.tool_calls or None}), steps)
 
         cancelled = False
+        local = session.model.partition(":")[0] in _LOCAL_PROVIDERS
+        untitled = first_exchange and session.title == DEFAULT_TITLE
+        titling: asyncio.Task[None] | None = None
         try:
             save()
             provider = get_provider(session.model)
@@ -179,9 +211,20 @@ class AgentService:
             budget = context.Budget(info)
             note = await context.compact_history(provider, session.id, system, specs, convo, budget)
             request = convo[-1]  # the user's message: kept verbatim whatever gets summarized
+            if untitled:
+                # A new chat is named from its first message, at the start: a long turn has its title while it
+                # works, and one that fails or is stopped still has it. A model on this machine answers one request
+                # at a time, so there the title goes first; elsewhere it is asked alongside the reply.
+                titling = asyncio.create_task(self._make_title(turn, provider, system, request, specs))
+                if local:
+                    await titling
+            check_mode = settings.load().agent_completion_check
+            checked = check_mode == "always" or (check_mode == "local"
+                                                 and session.model.partition(":")[0] in _LOCAL_PROVIDERS)
             checks = 0
             checking = False  # the step answers a completion check: its text is a checklist, not for the user
             for _ in range(MAX_STEPS):
+                _drop_lost_images(convo)
                 current = next(i for i, m in enumerate(convo) if m is request)
                 fitted = await budget.fit(provider, system, specs, convo, current)
                 note = "; ".join(n for n in (note, fitted) if n) or None
@@ -234,7 +277,7 @@ class AgentService:
                             turn.emit(EvTextDelta(text=step["text"]))
                         break
                     check = None
-                    if specs:
+                    if specs and checked:
                         check = (_continue_note() if verdict == "no" else
                                  _completion_check(session.id, end.text, steps, asked=checks > 0))
                     if check is None:
@@ -253,8 +296,6 @@ class AgentService:
                     await self._run_tool(turn, call, reply, step, convo, save, info.vision)
             else:
                 turn.emit(EvError(message=f"Stopped after {MAX_STEPS} tool steps without a final answer"))
-            if first_exchange and session.title == DEFAULT_TITLE:
-                await self._make_title(turn, provider, content, reply.content)
         except asyncio.CancelledError:
             cancelled = turn.stopped = True
             self._close_open_calls(turn, reply, steps)
@@ -265,12 +306,20 @@ class AgentService:
             events.log("error", "agent", f"Turn failed: {exc}\n{traceback.format_exc(limit=8)}")
             turn.emit(EvError(message=f"{type(exc).__name__}: {exc}"))
         finally:
+            reply.elapsed_s = turn.worked()
             try:
                 save()
             except Exception as exc:  # the turn must still end cleanly, or the session stays busy forever
                 events.log("error", "agent", f"Could not save the reply in session {session.id}: {exc}")
             if cancelled:
                 events.log("info", "agent", f"Turn in session {session.id} stopped by user")
+            if titling is not None and not titling.done():
+                if cancelled:
+                    titling.cancel()
+                else:
+                    await asyncio.wait({titling}, timeout=35)
+            if untitled and not turn.titled:  # the model gave none (or never got to): the message's first words
+                self._set_title(turn, _clean_title(" ".join(content.split()[:6])) or DEFAULT_TITLE)
             self._finish(turn)
 
     def _finish(self, turn: Turn) -> None:
@@ -297,11 +346,18 @@ class AgentService:
         separated = False
         first_token: float | None = None  # when the model started generating (after reading the prompt)
         billed_tokens: int | None = None
+        billed: Usage | None = None
+        drafting, drafted = "", 0.0  # the tool call being written, and when it was last reported
         async for ev in provider.stream(system, convo, specs):
             if checking and isinstance(ev, TextDelta):
                 ev = ThinkingDelta(ev.text)
-            if first_token is None and isinstance(ev, (TextDelta, ThinkingDelta)):
+            if first_token is None and isinstance(ev, (TextDelta, ThinkingDelta, CallDraft)):
                 first_token = time.monotonic()
+            if isinstance(ev, CallDraft):
+                if ev.name != drafting or time.monotonic() - drafted >= DRAFT_EVERY_S:
+                    drafting, drafted = ev.name, time.monotonic()
+                    turn.emit(EvToolDraft(name=ev.name, chars=ev.size))
+                continue
             if isinstance(ev, TextDelta):
                 text = ev.text
                 if not separated and reply.content and not reply.content.endswith("\n"):
@@ -322,6 +378,7 @@ class AgentService:
                 openrouter_usage.record("chat", turn.session.model.partition(":")[2], ev,
                                         session_id=turn.session.id, message_id=reply.id)
                 billed_tokens = ev.completion_tokens
+                billed = ev
                 if ev.cost is not None:
                     reply.cost = round((reply.cost or 0) + ev.cost, 8)
                     turn.emit(EvUsage(cost=ev.cost, total=reply.cost))
@@ -331,6 +388,13 @@ class AgentService:
             raise ProviderError("The model stream ended without a final message")
         self._add_speed(turn, reply, end.output_tokens or billed_tokens,
                         end.generation_s or (time.monotonic() - first_token if first_token is not None else None))
+        usage = reply.usage or TokenUsage()
+        reply.usage = TokenUsage(
+            requests=usage.requests + 1,
+            input_tokens=usage.input_tokens + (end.prompt_tokens or (billed.prompt_tokens if billed else None) or 0),
+            cached_tokens=usage.cached_tokens + (end.cached_tokens or (billed.cached_tokens if billed else None) or 0),
+            output_tokens=usage.output_tokens + (end.output_tokens or billed_tokens or 0))
+        turn.emit(EvTokens(usage=reply.usage))
         return end
 
     @staticmethod
@@ -347,7 +411,7 @@ class AgentService:
                         convo: list[Message], save: Any, vision: bool) -> ToolOutcome | None:
         """Run one call (after approval, if it needs it); returns its outcome, None when the user denied it."""
         auto = settings.load().agent_auto_approve
-        gated = tools.needs_approval(call.name, auto)
+        gated = tools.needs_approval(call.name, auto, call.args)
         tc = ToolCall(id=call.id, name=call.name, args=call.args, status="pending_approval" if gated else "running",
                       at=len(reply.content), seq=turn.next_seq())
         turn.open_thinking = None
@@ -362,7 +426,7 @@ class AgentService:
             fut: asyncio.Future[bool] = asyncio.get_running_loop().create_future()
             turn.approvals[call.id] = fut
             turn.emit(EvToolApproval(call_id=call.id))
-            approved = await fut
+            approved = await turn.wait_for_user(fut)
             if not approved:
                 tc.status, tc.output = "denied", DENIED
                 record.update(output=DENIED, ok=False)
@@ -387,7 +451,7 @@ class AgentService:
             turn.emit(EvToolCall(call=tc))
             save()
             try:
-                answer = await fut
+                answer = await turn.wait_for_user(fut)
             finally:
                 turn.answers.pop(call.id, None)
             display.answer = answer
@@ -435,17 +499,31 @@ class AgentService:
                 records[tc.id].update(output=tc.output, ok=False)
             turn.emit(EvToolResult(call_id=tc.id, ok=False, output=tc.output))
 
-    async def _make_title(self, turn: Turn, provider: Provider, user: str, answer: str) -> None:
-        title = ""
+    async def _make_title(self, turn: Turn, provider: Provider, system: str, first: Message,
+                          specs: list[tools.ToolSpec] | None) -> None:
+        """Ask the model to name the chat after its first message. Leaves the chat untitled when that fails; the
+        turn then falls back to the message's first words."""
         try:
-            convo = f"<conversation>\nUser: {user[:600]}\nAssistant: {answer[:600]}\n</conversation>\n\n"
-            raw = await asyncio.wait_for(
-                provider.complete(_TITLE_SYSTEM, convo + "Title for this conversation (3-6 words):"), timeout=30)
-            title = _clean_title(raw, max_words=8)
+            raw = await asyncio.wait_for(provider.title(system, first, specs), timeout=30)
         except (ProviderError, TimeoutError) as exc:
-            events.log("info", "agent", f"Title generation fell back to heuristic: {exc}")
-        if not title:
-            title = _clean_title(" ".join(user.split()[:6])) or DEFAULT_TITLE
+            events.log("info", "agent", f"No title from {turn.session.model}: {exc}")
+            return
+        except Exception as exc:  # a title is never worth a failed turn
+            events.log("warn", "agent", f"Title request failed: {type(exc).__name__}: {exc}")
+            return
+        title = _clean_title(raw, max_words=8)
+        if title:
+            self._set_title(turn, title)
+        else:  # nothing came back (a model that only got as far as thinking), or it was not a title
+            events.log("info", "agent", f"{turn.session.model} gave no usable title; using the first words of the "
+                                        "message")
+
+    @staticmethod
+    def _set_title(turn: Turn, title: str) -> None:
+        turn.titled = True
+        if title == turn.session.title:
+            return
+        turn.session.title = title
         db.update_session(turn.session.id, title=title)
         turn.emit(EvTitle(title=title))
 
@@ -458,6 +536,15 @@ def _clean_title(text: str, max_words: int | None = None) -> str:
     if max_words is not None and len(line.split()) > max_words:
         return ""
     return line[:60].rstrip() + ("…" if len(line) > 60 else "")
+
+
+def _drop_lost_images(convo: list[Message]) -> None:
+    """Pictures that were deleted since the model looked at them (an agent tidying up its own previews) leave the
+    conversation: a request that still carried them could not be built. A saved chat drops them the same way when
+    it is loaded (``history._files``)."""
+    for m in convo:
+        if m.images and not all(p.is_file() for p in m.images):
+            m.images = [p for p in m.images if p.is_file()]
 
 
 def _id() -> str:

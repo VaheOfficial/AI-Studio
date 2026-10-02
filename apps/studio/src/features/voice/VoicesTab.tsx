@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { AnimatePresence, motion } from 'motion/react'
-import { AudioLines, Fingerprint, Lock, Mic2, Pencil, Search, WandSparkles } from 'lucide-react'
+import { AudioLines, Fingerprint, Library, Lock, Mic2, Pencil, Search, WandSparkles } from 'lucide-react'
 import { AudioPlayer, Badge, Button, Card, EmptyState, IconButton, Input, Skeleton, Tabs } from '@studio/ui'
 import type { VoiceProfile } from '../../api/contracts/voice'
 import { useLive } from '../../api/live'
@@ -9,6 +9,7 @@ import { useLanguageName, useVoiceProfiles } from '../../api/voice'
 import { GalleryView } from './GalleryView'
 import { ProfileEditor } from './ProfileEditor'
 import { VoiceOrb } from './VoiceOrb'
+import { PageHeader } from '../../components/Page'
 import s from './VoicesTab.module.css'
 
 type Tab = 'mine' | 'presets' | 'gallery'
@@ -34,6 +35,12 @@ export function VoicesTab() {
 
   return (
     <div className={s.page}>
+      <PageHeader
+        hue="var(--hue-voice)"
+        icon={<Library />}
+        title="Voices"
+        subtitle="Your cloned and designed voices, the presets that come with each engine, and a gallery to pick from."
+      />
       <div className={s.toolbar}>
         <Tabs<Tab>
           variant="pill"
@@ -53,7 +60,7 @@ export function VoicesTab() {
       {tab === 'gallery' ? (
         <GalleryView />
       ) : isLoading ? (
-        <div className={s.grid}>
+        <div className={`${s.grid} ui-stagger`}>
           {Array.from({ length: 4 }, (_, i) => (
             <Skeleton key={i} height={170} radius={14} />
           ))}

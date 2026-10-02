@@ -27,7 +27,7 @@
   position: absolute;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, rgb(139 92 246 / 0.55), var(--accent));
+  background: linear-gradient(90deg, rgb(var(--accent-rgb) / 0.55), var(--accent));
 }
 
 .thumb {
@@ -37,7 +37,7 @@
   border-radius: 50%;
   background: #fff;
   box-shadow:
-    0 0 0 3px rgb(139 92 246 / 0.35),
+    0 0 0 3px rgb(var(--accent-rgb) / 0.35),
     0 2px 6px rgb(0 0 0 / 0.5);
   transition:
     transform var(--dur-fast) var(--ease-spring),
@@ -46,14 +46,14 @@
 
 .root:hover .thumb {
   box-shadow:
-    0 0 0 5px rgb(139 92 246 / 0.28),
+    0 0 0 5px rgb(var(--accent-rgb) / 0.28),
     0 2px 6px rgb(0 0 0 / 0.5);
 }
 
 .thumb:focus-visible {
   outline: none;
   box-shadow:
-    0 0 0 6px rgb(139 92 246 / 0.35),
+    0 0 0 6px rgb(var(--accent-rgb) / 0.35),
     0 2px 6px rgb(0 0 0 / 0.5);
 }
 

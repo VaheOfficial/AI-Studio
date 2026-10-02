@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { useNavigate } from 'react-router'
 import { motion } from 'motion/react'
 import { ArrowUp, ChevronsRight, Dices, FlaskConical, Footprints, Headphones, Shield, Skull, Square, Sword, Swords, Trophy, Undo2 } from 'lucide-react'
-import { Button, EmptyState, IconButton, Kbd, Select, Skeleton, Textarea, Tooltip, cn } from '@studio/ui'
+import { Button, EmptyState, IconButton, Kbd, Logo, ScrambleText, Select, Skeleton, Textarea, Tooltip, cn } from '@studio/ui'
 import type { CombatRequest, CombatRoll, Game, GamePending, GameState, GameTurn } from '../../api/contracts/game'
 import { useCombat, useGame, useGameAction, useMakeMedia, usePatchGame, useStopTurn, useUndoTurn } from '../../api/game'
 import { useChatModels } from '../../api/hooks'
@@ -139,17 +139,52 @@ function Story({ game, liveTurn }: { game: Game; liveTurn?: string }) {
   )
 }
 
-function ActionLine({ action, roll }: { action: string; roll?: number }) {
+function ActionLine({ action, roll, live }: { action: string; roll?: number; live?: boolean }) {
   return (
     <div className={s.action}>
       <ChevronsRight size={14} />
       <span className={s.actionText}>{action}</span>
-      {roll != null && (
-        <span className={cn(s.roll, roll === 20 && s.crit, roll === 1 && s.fumble)} title="Your d20 roll for this action">
-          <Dices size={12} /> {roll}
-        </span>
-      )}
+      {roll != null && <Roll value={roll} tumble={live} />}
     </div>
+  )
+}
+
+/** The d20 result. A roll that has just been made tumbles through numbers before it lands. */
+function Roll({ value, tumble }: { value: number; tumble?: boolean }) {
+  // null once the die has come to rest (or when it never tumbled); a number while it is still rolling
+  const [rolling, setRolling] = useState<number | null>(() =>
+    tumble && !window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : null,
+  )
+  const landed = rolling === null
+  const shown = rolling ?? value
+  useEffect(() => {
+    if (!tumble || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    const started = performance.now()
+    let raf = 0
+    let last = 0
+    const frame = (now: number) => {
+      if (now - started > 750) return setRolling(null)
+      // slows down as it comes to rest
+      if (now - last > 40 + ((now - started) / 750) * 110) {
+        last = now
+        setRolling(1 + Math.floor(Math.random() * 20))
+      }
+      raf = requestAnimationFrame(frame)
+    }
+    raf = requestAnimationFrame(frame)
+    return () => cancelAnimationFrame(raf)
+  }, [tumble])
+  return (
+    <motion.span
+      key={landed ? 'landed' : 'rolling'}
+      className={cn(s.roll, landed && value === 20 && s.crit, landed && value === 1 && s.fumble, !landed && s.rolling)}
+      title="Your d20 roll for this action"
+      initial={landed && tumble ? { scale: 1.6 } : false}
+      animate={{ scale: 1 }}
+      transition={{ type: 'spring', stiffness: 380, damping: 12 }}
+    >
+      <Dices size={12} /> {shown || '…'}
+    </motion.span>
   )
 }
 
@@ -200,10 +235,15 @@ function TurnView({ gameId, turn, opening, autoPlay }: { gameId: string; turn: G
 function PendingTurn({ pending, opening }: { pending: GamePending; opening: boolean }) {
   return (
     <article className={s.turn}>
-      {opening ? <div className={s.opening}>The adventure begins</div> : <ActionLine action={pending.action} roll={pending.roll} />}
+      {opening ? <div className={s.opening}>The adventure begins</div> : <ActionLine action={pending.action} roll={pending.roll} live />}
       <CombatLog rolls={pending.combat} />
       <div className={s.narration}>
-        {pending.narration.trim() ? <Markdown text={pending.narration} /> : <p className={s.writing}>The game master is writing…</p>}
+        {pending.narration.trim() ? <Markdown text={pending.narration} /> : (
+          <div className={s.writing}>
+            <Logo size={42} mode="working" />
+            <ScrambleText text="The game master is writing…" duration={600} />
+          </div>
+        )}
       </div>
     </article>
   )

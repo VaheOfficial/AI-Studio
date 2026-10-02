@@ -129,15 +129,21 @@
 }
 
 .writing {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   color: var(--text-3);
   font-style: italic;
-  animation: pulse 1.6s ease-in-out infinite;
 }
 
-@keyframes pulse {
-  50% {
-    opacity: 0.45;
-  }
+/* While the die is still tumbling */
+.rolling {
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+  color: var(--text-1);
+}
+
+.rolling svg {
+  animation: global(ui-spin) 0.5s linear infinite;
 }
 
 .changes {

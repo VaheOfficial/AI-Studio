@@ -15,7 +15,7 @@ from .jobs import JobContext, JobError, RateMeter, jobs
 from .proc import kill_tree
 from .runtimes import RUNTIMES, RuntimeNotReady, runtimes
 from .runtimes import envs
-from .schemas import EvModelRemoved, EvModelUpdate, InstalledModel, InstalledStatus, Job
+from .schemas import EvModelRemoved, EvModelUpdate, InstalledModel, InstalledStatus, Job, TextEncoderMode
 
 
 class ModelError(Exception):
@@ -408,6 +408,28 @@ class ModelManager:
             status = 409 if isinstance(exc, RuntimeNotReady) else 500
             raise ModelError(f"Failed to load {m.name}: {exc}", status) from exc
         return self.set_status(m.id, "loaded") or m
+
+    def set_text_encoder(self, model_id: str, mode: TextEncoderMode) -> InstalledModel:
+        """How a local image pipeline holds its large text encoders. Takes effect at the next load, so a loaded
+        model is taken out of memory."""
+        m = self.get(model_id)
+        if m.kind != "image" or m.runtime != "diffusers":
+            raise ModelError(f"{m.name} has no text encoder to choose a precision for", 400)
+        try:
+            if not image_models.large_encoders(image_models.layout(m)):
+                raise ModelError(f"{m.name}'s text encoders are small; there is nothing to gain from quantizing "
+                                 "them", 400)
+        except image_models.LayoutError as exc:
+            raise ModelError(str(exc), 409) from exc
+        wanted = None if mode == "full" else mode
+        if m.text_encoder == wanted:
+            return m
+        if m.status in ("loaded", "loading"):
+            m = self.unload(model_id)
+        m = m.model_copy(update={"text_encoder": wanted})
+        self.register(m)
+        events.log("info", "models", f"{m.name}: text encoder set to {mode}")
+        return m
 
     def unload(self, model_id: str) -> InstalledModel:
         m = self.get(model_id)

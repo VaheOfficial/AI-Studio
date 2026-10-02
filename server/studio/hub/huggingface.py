@@ -4,6 +4,7 @@ with installable variants, companions from base pipelines, fit on this machine a
 from __future__ import annotations
 
 import fnmatch
+import html
 import re
 from typing import Any
 
@@ -12,9 +13,11 @@ from huggingface_hub import HfApi, ModelInfo
 from huggingface_hub.errors import GatedRepoError, HfHubHTTPError, RepositoryNotFoundError
 
 from .. import catalog, db, image_models, settings
+from ..runtimes import envs
 from ..catalog import Spec
-from ..schemas import InstalledModel, ModelKind
-from ..schemas_hub import HubCompanions, HubFile, HubRepo, HubSearchResult, HubSort, HubVariant
+from ..schemas import InstalledModel, ModelKind, TextEncoderMode
+from ..schemas_hub import (HubCompanions, HubFile, HubFit, HubRepo, HubSearchResult, HubSort, HubTextEncoder,
+                           HubVariant)
 from . import variants
 from .cache import cached
 
@@ -114,8 +117,14 @@ def _summary(repo: str) -> str | None:
         paragraphs = []
         for block in re.split(r"\n\s*\n", text):
             lines = [ln.strip() for ln in block.splitlines() if ln.strip() and not _SKIP_LINE.match(ln)]
-            prose = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", " ".join(lines))
-            prose = re.sub(r"<[^>]+>", "", prose).strip()
+            joined = html.unescape(" ".join(lines)).replace("\xa0", " ")
+            # A row of links (ModelScope | Hugging Face | Blog …) says nothing about the model
+            if len(re.findall(r"[^\W\d_]", re.sub(r"\[[^\]]+\]\([^)]+\)", "", joined))) < 40:
+                continue
+            prose = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", joined)
+            prose = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", prose)).strip()
+            if prose.count("|") >= 3 and len(prose) / (prose.count("|") + 1) < 30:
+                continue  # the same row written with HTML links
             if len(prose) >= 60:
                 paragraphs.append(prose)
             if sum(len(p) for p in paragraphs) > 400:
@@ -133,6 +142,30 @@ def _as_list(value: Any) -> list[str]:
     if isinstance(value, str):
         return [value]
     return [v for v in value if isinstance(v, str)] if isinstance(value, list) else []
+
+
+def _pipeline_class(repo: str) -> str | None:
+    """``_class_name`` of a repo's ``model_index.json``: the diffusers pipeline that runs it."""
+    def fetch() -> str | None:
+        token = _token()
+        try:
+            r = httpx.get(f"https://huggingface.co/{repo}/raw/main/model_index.json", timeout=10, follow_redirects=True,
+                          headers={"Authorization": f"Bearer {token}"} if token else None)
+            name = r.json().get("_class_name") if r.status_code == 200 else None
+        except (httpx.HTTPError, ValueError):
+            return None
+        return name if isinstance(name, str) else None
+    return cached(("hf-pipeline-class", repo), _INFO_TTL_S, fetch)
+
+
+def _unsupported(pipeline_repo: str | None) -> str | None:
+    """Why the image runtime can't run a pipeline, when its diffusers doesn't have the pipeline's class: a model
+    newer than the runtime. None when it can, or when that can't be told yet."""
+    cls = _pipeline_class(pipeline_repo) if pipeline_repo else None
+    if not cls or envs.knows_diffusers_class("image", cls) is not False:
+        return None
+    return (f"Needs {cls}, which the image runtime's diffusers doesn't have: this model is newer than the runtime. "
+            "It becomes installable when an app update brings a newer one.")
 
 
 def _base_pipeline(repo: str, files: dict[str, int], base_models: list[str]) -> tuple[str, dict[str, int], bool] | None:
@@ -175,15 +208,18 @@ def _preset_variant(spec: Spec, files: dict[str, int], installed_ids: set[str]) 
     )
 
 
-def _variant(repo: str, d: variants.Draft, base: tuple[str, dict[str, int], bool] | None,
-             installed: list[InstalledModel]) -> HubVariant:
+def _variant(repo: str, files: dict[str, int], d: variants.Draft, base: tuple[str, dict[str, int], bool] | None,
+             installed: list[InstalledModel], encoders: dict[str, int]) -> HubVariant:
+    """``encoders`` collects, per variant id, the bytes of the large text encoder the variant runs with."""
     companions = None
     notes = [d.note] if d.note else []
     runtimes = list(d.runtimes)
     base_bytes = 0  # text encoders / VAE the denoiser runs with, for the VRAM estimate
+    encoder = variants.encoder_bytes(files, d.files) if d.format == "diffusers" else 0
     if d.needs_base:
         comp_files, comp_note = variants.companion_files(base[1], d) if base else ([], None)
         base_bytes = sum(base[1][f] for f in comp_files) if base else 0
+        encoder = variants.encoder_bytes(base[1], comp_files) if base else 0
         reuse = image_models.installed_base(repo) if d.kind == "image" else None
         if reuse:
             # The loader pairs these weights with the installed pipeline, so nothing else is downloaded — which also
@@ -195,25 +231,78 @@ def _variant(repo: str, d: variants.Draft, base: tuple[str, dict[str, int], bool
             runtimes = []
             notes.append(comp_note or "No diffusers base pipeline found in this repo's base_model metadata, so the "
                          "rest of the pipeline can't be assembled.")
+    if d.kind == "image" and "diffusers" in runtimes and (d.needs_base or d.format == "diffusers"):
+        missing = _unsupported(base[0] if d.needs_base and base else repo if d.format == "diffusers" else None)
+        if missing:
+            runtimes = []
+            notes.append(missing)
     vram = variants.vram_gb(d, base_bytes)
+    runtime = runtimes[0] if runtimes else "diffusers"
+    encoder_fits = None
+    if encoder and d.kind == "image" and "diffusers" in runtimes:
+        # The same pipeline with its text encoder held in fewer bits: that much less to keep on the GPU
+        encoders[d.id] = encoder
+        encoder_fits = {}
+        for mode, scale in variants.ENCODER_SCALE.items():
+            need = variants.vram_gb(d, base_bytes - int(encoder * (1 - scale)))
+            encoder_fits[mode] = HubFit(vram_gb=need, fit=catalog.compute_fit(need, runtime))
     return HubVariant(
         id=d.id, ref=f"hf:{repo}#{d.id}", label=d.label, format=d.format, quant=d.quant, kind=d.kind, files=d.files,
-        size_bytes=d.size, companions=companions, vram_gb=vram,
-        fit=catalog.compute_fit(vram, runtimes[0] if runtimes else "diffusers"), runtimes=runtimes,
+        size_bytes=d.size, companions=companions, vram_gb=vram, fit=catalog.compute_fit(vram, runtime),
+        encoder_fits=encoder_fits, runtimes=runtimes,
         note=" ".join(notes) or None, installed_id=_installed_match(repo, d.files, d.format, d.quant, installed),
     )
 
 
+def _fit(v: HubVariant, mode: TextEncoderMode | None) -> str:
+    return v.encoder_fits[mode].fit if mode and v.encoder_fits and mode in v.encoder_fits else v.fit
+
+
+def _pick(vs: list[HubVariant], kind: ModelKind | None, mode: TextEncoderMode | None = None) -> HubVariant | None:
+    """One sensible default: Q4_K_M for LLMs when it fits, otherwise the largest variant that fits the GPU
+    (``mode``: with the text encoder held that way)."""
+    usable = [v for v in vs if v.runtimes and _fit(v, mode) == "yes"]
+    pick = next((v for v in usable if kind in (None, "text") and v.quant == "Q4_K_M"), None)
+    return pick or max(usable, key=lambda v: v.size_bytes + (v.companions.size_bytes if v.companions else 0),
+                       default=None)
+
+
 def _recommend(vs: list[HubVariant], kind: ModelKind | None) -> None:
-    """Flag one sensible default: Q4_K_M for LLMs when it fits, otherwise the largest variant that fits the GPU."""
     if any(v.recommended for v in vs):
         return
-    usable = [v for v in vs if v.runtimes and v.fit == "yes"]
-    pick = next((v for v in usable if kind in (None, "text") and v.quant == "Q4_K_M"), None)
-    pick = pick or max(usable, key=lambda v: v.size_bytes + (v.companions.size_bytes if v.companions else 0),
-                       default=None)
+    pick = _pick(vs, kind)
     if pick:
         pick.recommended = True
+
+
+def _denoiser_bits(v: HubVariant) -> int:
+    """Rough precision of a variant's denoiser, for judging a combination: Q3 → 3, Q8 → 8, anything unquantized 16."""
+    m = re.search(r"Q(\d)", v.quant or "", re.I)
+    return int(m.group(1)) if m else 16
+
+
+def _text_encoder(vs: list[HubVariant], encoders: dict[str, int], kind: ModelKind | None) -> HubTextEncoder | None:
+    """The encoder choice for an image repo. The page starts on the most precise mode in which a good denoiser
+    (5 bits or more) fits the GPU: below that an image visibly loses detail, while an encoder in 8 bits is close
+    to the original. When none gets there, the mode that fits the best denoiser."""
+    with_choice = [v for v in vs if v.encoder_fits]
+    if not with_choice:
+        return None
+    picks = {mode: _pick(with_choice, kind, mode) for mode in variants.ENCODER_SCALE}
+    recommended = {mode: v.id for mode, v in picks.items() if v}
+    default: TextEncoderMode = "full"
+    best = -1
+    for mode in variants.ENCODER_SCALE:  # most precise first
+        v = picks[mode]
+        bits = _denoiser_bits(v) if v else -1
+        if bits >= 5:
+            default = mode
+            break
+        if bits > best:
+            default, best = mode, bits
+    size = max(encoders.values())
+    memory = {mode: int(size * scale) for mode, scale in variants.ENCODER_SCALE.items()}
+    return HubTextEncoder(size_bytes=size, memory_bytes=memory, default=default, recommended=recommended)
 
 
 def _related(repo: str, name: str, kind: ModelKind | None, has_gguf: bool) -> list[HubSearchResult]:
@@ -239,8 +328,10 @@ def repo(repo_id: str) -> HubRepo:
     out = [_preset_variant(s, files, {m.id for m in installed})
            for s in catalog.SPECS if s.source.type == "hf" and s.source.repo == repo_id]
     base = _base_pipeline(repo_id, files, base_models) if any(d.needs_base for d in drafts) else None
-    out += [_variant(repo_id, d, base, installed) for d in drafts]
+    encoders: dict[str, int] = {}
+    out += [_variant(repo_id, files, d, base, installed, encoders) for d in drafts]
     _recommend(out, kind)
+    text_encoder = _text_encoder(out, encoders, kind)
     author, _, name = repo_id.rpartition("/")
     return HubRepo(
         id=repo_id, source="hf", name=name, author=author or None, kind=kind, task=i.pipeline_tag,
@@ -248,6 +339,6 @@ def repo(repo_id: str) -> HubRepo:
         base_models=base_models, downloads=i.downloads, likes=i.likes,
         updated_at=i.last_modified.isoformat() if i.last_modified else None,
         tags=[t for t in tags if ":" not in t][:12], summary=_summary(repo_id), url=f"https://huggingface.co/{repo_id}",
-        files=[HubFile(path=p, size=s) for p, s in sorted(files.items())], variants=out,
+        files=[HubFile(path=p, size=s) for p, s in sorted(files.items())], variants=out, text_encoder=text_encoder,
         related=_related(repo_id, name, kind, any(d.format == "gguf" for d in drafts)),
     )

@@ -16,6 +16,7 @@ from ...models import ModelError, models
 from ...runtimes import WorkerError
 from ...schemas import ChatModelOption, InstalledModel, LocalBackendId
 from ..types import Message, ModelInfo, ProviderError, StreamEvent, ToolSpec
+from .base import TITLE_ASK
 from .openai_chat import OpenAIProvider, looks_like_vision
 
 
@@ -57,9 +58,19 @@ class _LocalProvider(OpenAIProvider):
         await self._ready()
         return await super().complete(system, prompt)
 
+    async def title(self, system: str, first: Message, tools: list[ToolSpec] | None) -> str:
+        """Asked at the end of the chat's own prompt. These servers keep one conversation's prompt in memory and
+        read a request only from where it stops matching it. A small request of its own would replace what is
+        kept, and the chat would then be read again from its first token; this one shares everything up to the
+        user's message, so what it reads is what the chat's first request needs anyway."""
+        await self._ready()
+        return await self._answer(self._body(system, [first, Message("user", TITLE_ASK)], tools))
+
 
 class LlamaCppProvider(_LocalProvider):
     runtime = "llamacpp"
+    parallel_tools = True
+    complete_extra = {"chat_template_kwargs": {"enable_thinking": False}, "reasoning_effort": "none"}
 
     def _endpoint(self) -> str:
         url = llamacpp.server.base_url(self.model)

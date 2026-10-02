@@ -7,8 +7,8 @@ the workers and model servers it started) never outlives the window - not even w
 from __future__ import annotations
 
 import os
-import sys
 import threading
+from typing import BinaryIO
 
 import uvicorn
 
@@ -17,9 +17,23 @@ from . import config, proc
 _SHUTDOWN_GRACE_S = 20  # a normal shutdown saves running turns and stops the workers within a few seconds
 
 
-def _exit_with_parent(server: uvicorn.Server) -> None:
+def _own_stdin() -> BinaryIO:
+    """Take the pipe from the parent for this process alone and leave the null device as standard input.
+
+    Processes the server starts inherit its standard input unless they are given one. With the pipe there, a read
+    pending on it in this process makes Windows hold up everything else done on the same pipe, and a Python child
+    touches its standard input while starting: it froze before running a line (downloads and runtime installs sat
+    at 0 % forever). The copy made here is not inheritable; what children inherit is the null device."""
+    pipe = os.fdopen(os.dup(0), "rb", buffering=0)
+    null = os.open(os.devnull, os.O_RDONLY)
+    os.dup2(null, 0)
+    os.close(null)
+    return pipe
+
+
+def _exit_with_parent(server: uvicorn.Server, pipe: BinaryIO) -> None:
     try:
-        sys.stdin.buffer.read()  # returns at end of file: the parent closed the pipe, or died
+        pipe.read()  # returns at end of file: the parent closed the pipe, or died
     except (OSError, ValueError):
         pass
     server.should_exit = True
@@ -39,7 +53,8 @@ def main() -> None:
     server = uvicorn.Server(uvicorn.Config("studio.main:app", host=config.HOST, port=config.PORT, log_level="info",
                                            timeout_graceful_shutdown=3))
     if os.environ.get("STUDIO_WATCH_PARENT") == "1":
-        threading.Thread(target=_exit_with_parent, args=(server,), name="parent-watch", daemon=True).start()
+        threading.Thread(target=_exit_with_parent, args=(server, _own_stdin()), name="parent-watch",
+                         daemon=True).start()
     server.run()
 
 

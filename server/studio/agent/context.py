@@ -5,7 +5,7 @@ used to overflow and the provider silently dropped the oldest messages - usually
 model step ``Budget.fit`` applies, in order:
 
 1. Images: only the last few pictures stay attached (older ones become a line naming the file); a model that can't
-   see gets none.
+   see gets none. They go in batches, for the same reason as in 2.
 2. Tool-result clearing: past ``TRIM_AT`` of the window, old tool outputs are cut to a short head with a note that
    the tool can be called again. Done in one batch (not a sliding window) so the provider's prompt cache is only
    invalidated once.
@@ -29,7 +29,8 @@ from .types import Message, ModelInfo, ProviderError, StepEnd, TextDelta, ToolSp
 
 CHARS_PER_TOKEN = 3.2  # conservative for code/JSON-heavy agent transcripts
 IMAGE_TOKENS = 1100  # a ~1280 px image in Qwen-VL / Gemma-class models
-KEEP_IMAGES = 3  # most recent image-bearing messages that keep their pictures
+KEEP_IMAGES = 3  # most recent image-bearing messages that keep their pictures when older ones are taken out...
+MAX_IMAGES = 6  # ...which happens when there are more than this many
 TRIM_AT = 0.55
 COMPACT_AT = 0.80
 HISTORY_AT = 0.45  # at the start of a turn, earlier turns above this share of the window get summarized
@@ -168,6 +169,13 @@ class Budget:
 
 
 def limit_images(convo: list[Message], vision: bool) -> None:
+    """Take older pictures out of the conversation. Taking one out changes an earlier message, and the model then
+    reads everything after it again instead of from its prompt cache, so they go in batches: up to ``MAX_IMAGES``
+    messages keep theirs, and when there are more, all but the newest ``KEEP_IMAGES`` lose them at once. (One out
+    for every one in made a turn that looks at many pictures re-read its last steps at every step.)"""
+    bearing = [m for m in convo if m.images]
+    if vision and len(bearing) <= MAX_IMAGES:
+        return
     keep = KEEP_IMAGES if vision else 0
     seen = 0
     for m in reversed(convo):

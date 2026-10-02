@@ -1,4 +1,4 @@
-# AI Studio
+# Grom AI Studio
 
 A local-first studio for running **text, image, voice, speech-to-text and music** models on your own GPU, with
 a tool-using agent that can set everything up for you. One UI; every model runs on this machine.
@@ -60,7 +60,7 @@ accessibility, and `motion` for animation. Modality hues (`--hue-text/image/voic
 
 ## License
 
-AI Studio is free software under the GNU Affero General Public License v3.0 only; see [LICENSE](LICENSE). It
+Grom AI Studio is free software under the GNU Affero General Public License v3.0 only; see [LICENSE](LICENSE). It
 includes code ported from VoiceStudio (AGPL-3.0), OpenMuse (MIT) and OmniVoice (Apache-2.0), listed with their
 notices in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). Models downloaded through the app keep their own
 licenses.

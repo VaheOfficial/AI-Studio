@@ -9,3 +9,4 @@ __pycache__/
 .vite
 apps/desktop/vendor/
 apps/desktop/release/
+apps/desktop/src/shell-id.json

@@ -8,6 +8,7 @@ import { ModelPicker } from '../../components/ModelPicker'
 import { useModelChoice } from '../../components/useModelChoice'
 import { DictationCard } from './DictationCard'
 import { useRecorder } from './useRecorder'
+import { PageHeader } from '../../components/Page'
 import s from './TranscribeTab.module.css'
 
 const ts = (t: number) => `${Math.floor(t / 60)}:${Math.floor(t % 60).toString().padStart(2, '0')}`
@@ -42,6 +43,12 @@ export function TranscribeTab() {
 
   return (
     <div className={s.page}>
+      <PageHeader
+        hue="var(--hue-stt)"
+        icon={<Ear />}
+        title="Transcribe"
+        subtitle="Speech to text from a file, a recording or live dictation; the language is detected automatically."
+      />
       <div className={s.top}>
         <div className={s.picker}>
           <ModelPicker kind="stt" label="Transcription model" models={models} selected={selected} onSelect={select} isLoading={isLoading} unavailable={unavailable} />

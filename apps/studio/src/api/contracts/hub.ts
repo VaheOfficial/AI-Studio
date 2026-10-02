@@ -2,7 +2,7 @@
  * Model hub contract: search Hugging Face / Ollama / LM Studio's catalog, repo detail with installable variants,
  * variant installs and the local text backends. Mirrored by server/studio/schemas_hub.py. Routes: docs/api/hub.md.
  */
-import type { Fit, LocalBackendId, ModelKind, RuntimeId, WeightFormat } from '../types'
+import type { Fit, LocalBackendId, ModelKind, RuntimeId, TextEncoderMode, WeightFormat } from '../types'
 
 /** Where a search looks. "lmstudio" = LM Studio's curated GGUF uploads (the lmstudio-community org on HF). */
 export type HubCatalog = 'hf' | 'ollama' | 'lmstudio'
@@ -53,6 +53,26 @@ export interface HubCompanions {
   gated: boolean
 }
 
+export interface HubFit {
+  vram_gb: number
+  fit: Fit
+}
+
+/**
+ * An image repo's large text encoder (it comes with every variant, from this repo or its base pipeline) and the
+ * choice of how to hold it in memory. Per-variant numbers for each mode are in `HubVariant.encoder_fits`.
+ */
+export interface HubTextEncoder {
+  /** On disk, as shipped. */
+  size_bytes: number
+  /** What it takes on the GPU held each way (estimates). */
+  memory_bytes: Record<TextEncoderMode, number>
+  /** The mode the page starts on for this machine. */
+  default: TextEncoderMode
+  /** The variant to pick under each mode (absent: none fits). */
+  recommended: Partial<Record<TextEncoderMode, string>>
+}
+
 /** One installable way of getting a model: a GGUF quant, a diffusers precision, a single-file checkpoint, an Ollama tag… */
 export interface HubVariant {
   /** Unique within the repo: "gguf:<stem>", "diffusers:fp16", "file:<path>", "ct2", "catalog:<id>", Ollama tag. */
@@ -70,6 +90,8 @@ export interface HubVariant {
   /** Estimated memory to run fully on GPU (weights + companions + KV cache / activations). */
   vram_gb: number
   fit: Fit
+  /** Image pipelines with a large text encoder: estimate and fit for each way of holding it (`vram_gb`/`fit` are "full"). */
+  encoder_fits?: Partial<Record<TextEncoderMode, HubFit>>
   /** Runtimes that can load it; empty = no local runtime (the note says why). */
   runtimes: RuntimeId[]
   note?: string
@@ -97,6 +119,8 @@ export interface HubRepo {
   url: string
   files: HubFile[]
   variants: HubVariant[]
+  /** Present for image repos whose pipeline has a large text encoder. */
+  text_encoder?: HubTextEncoder
   /** Quantized builds of this model in other repos (GGUF conversions etc.). */
   related: HubSearchResult[]
 }
@@ -107,6 +131,8 @@ export interface HubInstallRequest {
   variant: string
   /** For GGUF language models: llamacpp | lmstudio | ollama. Defaults to Settings.default_local_backend. */
   runtime?: RuntimeId
+  /** Image pipelines: how the text encoder will be held in memory (default full). */
+  text_encoder?: TextEncoderMode
 }
 
 /** An engine that runs GGUF language models. */

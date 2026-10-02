@@ -7,7 +7,8 @@ import { useJob } from '../../api/live'
 import type { MusicRequest, Output } from '../../api/types'
 import { ModelPicker } from '../../components/ModelPicker'
 import { useModelChoice } from '../../components/useModelChoice'
-import { StudioLayout } from '../../components/Page'
+import { StudioHead, StudioLayout } from '../../components/Page'
+import { WorkingCard } from '../../components/Working'
 import s from './MusicPage.module.css'
 
 const GENRES = ['synthwave', 'lo-fi hip hop', 'cinematic orchestral', 'indie pop', 'drum & bass', 'acoustic folk', 'trap', 'jazz', 'metal', 'ambient', 'k-pop', 'house']
@@ -69,12 +70,7 @@ export default function MusicPage() {
 
   const controls = (
     <div className={s.controls}>
-      <div className={s.head}>
-        <span className={s.headIcon}>
-          <Music />
-        </span>
-        <h1>Music</h1>
-      </div>
+      <StudioHead icon={<Music />} title="Music" subtitle="Songs from a style and lyrics" />
       <ModelPicker kind="music" models={models} selected={selected} onSelect={select} isLoading={isLoading} unavailable={unavailable} />
 
       <Field label="Style" hint="Genre, instruments, tempo, vocals, mood — comma separated.">
@@ -150,11 +146,12 @@ export default function MusicPage() {
 
         <section className={s.tracks}>
           <h2 className={s.tracksTitle}>Your tracks</h2>
-          {tracks.length === 0 ? (
+          {tracks.length === 0 && !running ? (
             <EmptyState tint="var(--hue-music)" icon={<Music2 />} title="No songs yet" description="Every track you create lands here with its cover and prompt." />
           ) : (
             <div className={s.trackList}>
               <AnimatePresence initial={false}>
+                {running && <WorkingCard key="working" hue="var(--hue-music)" title="Composing your song" message={job.message} progress={job.progress} />}
                 {tracks.map((t) => (
                   <Track key={t.id} track={t} onDelete={() => del.mutate(t.id)} />
                 ))}

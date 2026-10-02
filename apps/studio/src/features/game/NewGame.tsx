@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router'
 import { motion } from 'motion/react'
-import { Sparkles, Swords } from 'lucide-react'
+import { Anchor, Castle, Cpu, Eye, PenLine, Radiation, Rocket, Skull, Sparkles, Swords } from 'lucide-react'
 import { Button, ChipGroup, Field, Input, Select, Textarea, cn } from '@studio/ui'
 import { useNewGame } from '../../api/game'
 import { useChatModels, useSettings } from '../../api/hooks'
@@ -18,6 +18,18 @@ const WORLDS = [
   { id: 'pirate', label: 'Pirates', text: 'A sun-bleached archipelago of pirate havens, naval patrols, cursed treasure and sea monsters.' },
   { id: 'custom', label: 'Your own', text: '' },
 ] as const
+
+/** Each world's emblem and color on its card. */
+const WORLD_LOOK: Record<(typeof WORLDS)[number]['id'], { icon: ReactNode; hue: string }> = {
+  dark: { icon: <Skull />, hue: 'var(--brand)' },
+  high: { icon: <Castle />, hue: 'var(--accent-2)' },
+  scifi: { icon: <Rocket />, hue: 'var(--hue-stt)' },
+  cyber: { icon: <Cpu />, hue: 'var(--hue-music)' },
+  post: { icon: <Radiation />, hue: 'var(--hue-game)' },
+  horror: { icon: <Eye />, hue: 'var(--hue-video)' },
+  pirate: { icon: <Anchor />, hue: 'var(--hue-voice)' },
+  custom: { icon: <PenLine />, hue: 'var(--text-2)' },
+}
 
 const ROLES = ['Warrior', 'Rogue', 'Mage', 'Ranger', 'Custom'] as const
 const ROLE_HINT: Record<string, string> = {
@@ -68,9 +80,17 @@ export function NewGame() {
 
         <section className={s.section}>
           <h2 className={s.label}>World</h2>
-          <div className={s.worlds}>
+          <div className={`${s.worlds} ui-stagger`}>
             {WORLDS.map((w) => (
-              <button key={w.id} type="button" className={cn(s.world, world === w.id && s.worldActive)} onClick={() => setWorld(w.id)} aria-pressed={world === w.id}>
+              <button
+                key={w.id}
+                type="button"
+                className={cn(s.world, world === w.id && s.worldActive)}
+                style={{ ['--world' as string]: WORLD_LOOK[w.id].hue }}
+                onClick={() => setWorld(w.id)}
+                aria-pressed={world === w.id}
+              >
+                <i className={s.worldIcon}>{WORLD_LOOK[w.id].icon}</i>
                 <strong>{w.label}</strong>
                 {w.text && <span>{w.text}</span>}
                 {!w.text && <span>Describe any setting you want.</span>}

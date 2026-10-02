@@ -4,11 +4,15 @@ the live plan, per-folder memory and background tasks. Each tool returns a typed
 from __future__ import annotations
 
 import asyncio
+import base64
+import re
 import time
 from collections.abc import Awaitable, Callable
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 from .. import config, osenv
+from ..agent import web
 from ..agent.types import ToolContext, ToolFailure, ToolOutcome, ToolSpec
 from ..schemas_workspace import (BrowserDisplay, DiffDisplay, FileDisplay, FileItem, FilesDisplay, PlanDisplay,
                                  PlanItem, TaskDisplay, TerminalDisplay)
@@ -63,9 +67,9 @@ SPECS: list[ToolSpec] = [
                   ["process_id"])),
     ToolSpec("stop_process", "Stop a background process (and its child processes).",
              _obj({"process_id": _S}, ["process_id"])),
-    ToolSpec("browser_navigate", "Open a URL in the agent's browser (shared with the user's live view) for pages you "
-             "need to interact with; to just read a page, fetch_url is faster. Returns the title and the start of "
-             "the page text.", _obj({"url": _S}, ["url"])),
+    ToolSpec("browser_navigate", "Open a URL in the agent's browser (shared with the user's live view). Returns the "
+             "page's main content (or its whole text when it has no clear main part), cut at 8,000 chars; a search "
+             "page (Brave, Bing, DuckDuckGo) comes back as the list of results with their addresses.", _obj({"url": _S}, ["url"])),
     ToolSpec("browser_click", "Click in the browser: by ref from browser_read's snapshot (most reliable), CSS "
              "selector, visible text, or x/y (page is 1280x800).",
              _obj({"ref": {"type": "string", "description": "e.g. e32"}, "selector": _S, "text": _S,
@@ -75,8 +79,9 @@ SPECS: list[ToolSpec] = [
              "selector, otherwise types at the focused element. submit presses Enter afterwards.",
              _obj({"text": _S, "ref": _S, "selector": _S, "submit": {"type": "boolean"}}, ["text"]),
              needs_approval=True),
-    ToolSpec("browser_read", "Read the current page: 'text' (visible text) or 'snapshot' (the page's elements with "
-             "[ref=eN] ids to click or type into). Includes recent console errors.",
+    ToolSpec("browser_read", "Read the current page: 'text' (all the visible text, for what browser_navigate left "
+             "out) or 'snapshot' (the page's elements with [ref=eN] ids to click or type into). Includes recent "
+             "console errors.",
              _obj({"mode": {"type": "string", "enum": ["text", "snapshot"]}})),
     ToolSpec("browser_screenshot", "Screenshot the current page: shown to the user, and to you when your model can "
              "see images (check layouts, maps, charts and other visual state).",
@@ -302,26 +307,123 @@ async def _browser_display(ctx: ToolContext, action: str, shot: bool = True) -> 
     return BrowserDisplay(action=action, url=url, title=title, screenshot=screenshot)
 
 
+PAGE_CHARS = 8_000  # of a page's content handed over when it opens; browser_read has all of its text
+MAIN_MIN = 1_500  # a main-content extraction shorter than this is not taken to be the page
+
+# The results of a search page, per engine: a script that returns [title, link, snippet] rows
+_RESULTS = {
+    "search.brave.com": """() => [...document.querySelectorAll("div.snippet[data-type='web']")].map((el) => {
+  const a = el.querySelector('a.l1, a[href^="http"]')
+  const t = el.querySelector('.title, .search-snippet-title')
+  const p = el.querySelector('.generic-snippet .content, .snippet-description, .snippet-content')
+  return a && t ? [t.innerText, a.href, p ? p.innerText : ''] : null
+}).filter(Boolean)""",
+    "bing.com": """() => [...document.querySelectorAll('li.b_algo')].map((li) => {
+  const a = li.querySelector('h2 a')
+  const p = li.querySelector('.b_caption p, p.b_lineclamp2, p.b_lineclamp3, p.b_lineclamp4, .b_algoSlug')
+  return a ? [a.innerText, a.href, p ? p.innerText : ''] : null
+}).filter(Boolean)""",
+    "duckduckgo.com": """() => [...document.querySelectorAll('.result:not(.result--ad)')].map((el) => {
+  const a = el.querySelector('a.result__a')
+  const p = el.querySelector('.result__snippet')
+  return a ? [a.innerText, a.href, p ? p.innerText : ''] : null
+}).filter(Boolean)""",
+}
+
+# What a page that turns the browser away says, in its title or its few words
+_REFUSALS = ("captcha", "are you a robot", "are you human", "verify you are human", "unusual traffic", "bots use",
+             "access denied", "just a moment", "attention required", "403 forbidden", "request blocked",
+             "confirm this search was made by a human", "press & hold", "security check")
+
+
+def _results_script(url: str) -> str | None:
+    host = urlparse(url).hostname or ""
+    return next((script for engine, script in _RESULTS.items() if host == engine or host.endswith("." + engine)), None)
+
+
+def _result_target(href: str) -> str:
+    """Search engines send result links through their own redirect; this gives the page's real address back
+    (Bing: base64 in ``u``; DuckDuckGo: ``uddg``)."""
+    query = parse_qs(urlparse(href).query)
+    if "bing.com/ck/a" in href:
+        packed = query.get("u", [""])[0]
+        if packed.startswith("a1"):
+            try:
+                return base64.urlsafe_b64decode(packed[2:] + "=" * (-len(packed[2:]) % 4)).decode("utf-8")
+            except (ValueError, UnicodeDecodeError):
+                return href
+    if "duckduckgo.com/l/" in href and query.get("uddg"):
+        return query["uddg"][0]
+    return href
+
+
+def _refused(title: str, text: str) -> str | None:
+    """Why this page is not the one that was asked for, when the site turned the browser away."""
+    words = text.strip()
+    if len(words) < 60:
+        return "came back empty"
+    if len(words) < 1_500 and any(sign in f"{title}\n{words}".lower() for sign in _REFUSALS):
+        return "is asking for a human check"
+    return None
+
+
+async def _page_report(ctx: ToolContext) -> str:
+    """The page that is open now, as the model gets it without a second call: the results of a search page, else
+    the page's main content (what a reader came for, without the navigation around it), else all of its text."""
+    url, title, html, text, results = await browser.page(ctx.session_id,
+                                                         _results_script((await browser.title(ctx.session_id))[0]))
+    head = f"{url}\nTitle: {title}\n"
+    if results:
+        rows = "\n".join(f"[{i}] {' '.join(t.split())}\n    {_result_target(u)}\n    {' '.join(s.split())}"
+                         for i, (t, u, s) in enumerate(results[:12], 1))
+        return f"{head}Search results (open the ones that look right):\n{rows}"
+    refused = _refused(title, text)
+    if refused:
+        # Said once and plainly, so the model moves on instead of trying this site and its neighbours again
+        return (f"{head}The site turned the browser away: the page {refused}. Don't open it again and don't try "
+                "other ways into the same site. Use a different source, or tell the user: they can take over the "
+                "browser to pass the check, and it stays passed for this site afterwards.")
+    main = await asyncio.to_thread(web.main_text, html, url)
+    if len(main) >= MAIN_MIN:
+        kind, body = "Main content", main
+    else:
+        kind, body = "Page text", re.sub(r"\n{3,}", "\n\n", text.strip())
+    if len(body) <= PAGE_CHARS:
+        return f"{head}{kind}:\n\n{body}"
+    return (f"{head}{kind}, the first {PAGE_CHARS:,} of {len(body):,} chars (browser_read 'text' has the whole page; "
+            f"fetch_url with a question finds the passages that answer it):\n\n{body[:PAGE_CHARS]}")
+
+
 async def _browser_navigate(a: dict[str, Any], ctx: ToolContext) -> ToolOutcome:
     await browser.navigate(ctx.session_id, a["url"], agent=True)
-    url, title, text, _ = await browser.read(ctx.session_id, "text")
-    preview = " ".join(text.split())[:1500]
+    report = await _page_report(ctx)
     display = await _browser_display(ctx, "Opened")
-    return ToolOutcome(True, f"Loaded {url}\nTitle: {title}\nStart of the page text:\n{preview}\n"
-                             "(browser_read gives the full text or an accessibility snapshot)", display=display)
+    return ToolOutcome(True, f"Loaded {report}", display=display)
+
+
+async def _moved(ctx: ToolContext, before: str) -> str:
+    """After a click or typing: where the browser is now, with the page's content when that is a new page."""
+    url, title = await browser.title(ctx.session_id)
+    if url.split("#")[0] == before.split("#")[0]:
+        return f"The page is still {url} ({title})"
+    return "It opened " + await _page_report(ctx)
 
 
 async def _browser_click(a: dict[str, Any], ctx: ToolContext) -> ToolOutcome:
+    before = (await browser.title(ctx.session_id))[0]
     await browser.click(ctx.session_id, a.get("selector"), a.get("text"), a.get("x"), a.get("y"), a.get("ref"))
+    where = await _moved(ctx, before)
     display = await _browser_display(ctx, "Clicked")
-    return ToolOutcome(True, f"Clicked. The page is now {display.url} — {display.title}", display=display)
+    return ToolOutcome(True, f"Clicked. {where}", display=display)
 
 
 async def _browser_type(a: dict[str, Any], ctx: ToolContext) -> ToolOutcome:
+    before = (await browser.title(ctx.session_id))[0]
     await browser.type(ctx.session_id, a["text"], a.get("selector"), bool(a.get("submit")), a.get("ref"))
+    where = await _moved(ctx, before)
     display = await _browser_display(ctx, "Typed")
     return ToolOutcome(True, f"Typed {len(a['text'])} chars{' and pressed Enter' if a.get('submit') else ''}. "
-                             f"The page is now {display.url} — {display.title}", display=display)
+                             f"{where}", display=display)
 
 
 async def _browser_read(a: dict[str, Any], ctx: ToolContext) -> ToolOutcome:

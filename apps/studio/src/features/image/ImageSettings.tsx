@@ -1,5 +1,5 @@
-import { Info, Ruler } from 'lucide-react'
-import { Field, IconButton, Input, SeedField, SegmentedControl, Select, Slider, cn } from '@studio/ui'
+import { Ruler } from 'lucide-react'
+import { Field, IconButton, Input, SeedField, SegmentedControl, Select, Slider } from '@studio/ui'
 import type { ImageModelProfile, ImageOption } from '../../api/contracts/image'
 import { AspectPicker } from '../../components/AspectPicker'
 import type { ImageDraft } from './draft'
@@ -153,21 +153,5 @@ export function ImageSettings(props: ImageSettingsProps) {
         />
       )}
     </>
-  )
-}
-
-/** Honest caveats for the selected model: cloud cost, offload, license, missing companions. */
-export function ModelNotes({ profile, className }: { profile: ImageModelProfile; className?: string }) {
-  const lines = [...(profile.cost ? [`Cost: ${profile.cost}`] : []), ...profile.notes]
-  if (!lines.length) return null
-  return (
-    <div className={cn(s.notes, className)}>
-      <Info className={s.notesIcon} />
-      <ul>
-        {lines.map((l) => (
-          <li key={l}>{l}</li>
-        ))}
-      </ul>
-    </div>
   )
 }

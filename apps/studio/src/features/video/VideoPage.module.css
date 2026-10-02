@@ -4,44 +4,18 @@
   gap: 18px;
 }
 
-.head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding-top: 4px;
-}
-
-.head h1 {
-  font-size: var(--text-lg);
-}
-
-.headIcon {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--hue-video) 14%, var(--bg-2));
-  color: var(--hue-video);
-  box-shadow: 0 0 20px -4px color-mix(in srgb, var(--hue-video) 60%, transparent);
-}
-
-.headIcon svg {
-  width: 15px;
-  height: 15px;
-}
-
 .submit {
   position: sticky;
   z-index: 2; /* above controls that create their own stacking (segment labels, slider thumbs) */
-  bottom: -24px;
+  bottom: -22px;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  margin: 0 -20px -24px -24px;
-  padding: 14px 20px 18px 24px;
-  background: linear-gradient(transparent, var(--bg-0) 30%);
+  margin: 0 -18px -22px;
+  padding: 16px 18px 18px;
+  border-radius: 0 0 var(--radius-2xl) var(--radius-2xl);
+  background: linear-gradient(transparent, var(--bg-1) 34%);
 }
 
 .hint {

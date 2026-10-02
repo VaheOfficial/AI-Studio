@@ -1,17 +1,19 @@
 {
   "name": "studio-desktop",
-  "productName": "AI Studio",
+  "productName": "Grom AI Studio",
   "private": true,
-  "version": "0.1.0",
-  "description": "AI Studio as a desktop app: one window that runs the local server and shows its UI.",
-  "author": "AI Studio",
+  "version": "0.2.0",
+  "description": "Grom AI Studio as a desktop app: one window that runs the local server and shows its UI.",
+  "author": "Grom",
   "type": "module",
   "main": "src/main.js",
   "scripts": {
-    "start": "electron .",
+    "start": "node scripts/sync-splash.mjs && electron .",
     "fetch-uv": "node scripts/fetch-uv.mjs",
-    "pack": "pnpm --filter studio build && node scripts/fetch-uv.mjs && electron-builder --dir",
-    "dist": "pnpm --filter studio build && node scripts/fetch-uv.mjs && electron-builder"
+    "shell-id": "node scripts/shell-id.mjs",
+    "sync-splash": "node scripts/sync-splash.mjs",
+    "pack": "pnpm --filter studio build && node scripts/fetch-uv.mjs && node scripts/sync-splash.mjs && node scripts/shell-id.mjs --stamp && electron-builder --dir",
+    "dist": "pnpm --filter studio build && node scripts/fetch-uv.mjs && node scripts/sync-splash.mjs && node scripts/shell-id.mjs --stamp && electron-builder"
   },
   "devDependencies": {
     "electron": "^44.5.1",

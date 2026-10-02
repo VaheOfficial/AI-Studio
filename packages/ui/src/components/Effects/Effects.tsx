@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type ElementType } from 'react'
 import { animate, motion, useMotionValue, useTransform } from 'motion/react'
 import { cn } from '../../lib/cn'
 import s from './Effects.module.css'
@@ -15,7 +15,7 @@ export interface AuroraProps {
  * Slow-drifting, heavily blurred color fields. Rendered to a tiny canvas and
  * upscaled with CSS blur — cheap enough to leave running on the home screen.
  */
-export function Aurora({ colors = ['#7c3aed', '#2563eb', '#06b6d4', '#db2777'], className, intensity = 1 }: AuroraProps) {
+export function Aurora({ colors = ['#e11d48', '#7f1d1d', '#b91c1c', '#9f1239'], className, intensity = 1 }: AuroraProps) {
   const ref = useRef<HTMLCanvasElement>(null)
   const key = colors.join(',')
 
@@ -81,4 +81,52 @@ export function AnimatedNumber({ value, format = (n) => Math.round(n).toString()
 /** Dot grid that fades out toward the edges — a subtle canvas backdrop. */
 export function GridBackdrop({ className }: { className?: string }) {
   return <div className={cn(s.grid, className)} aria-hidden />
+}
+
+const GLYPHS = '01<>/\\|[]{}#%&*+=-_:;!?ABCDEFGHJKLMNPQRSTUVWXYZ'
+
+export interface ScrambleTextProps {
+  text: string
+  /** Milliseconds the whole text takes to settle. */
+  duration?: number
+  className?: string
+  as?: ElementType
+}
+
+/**
+ * Text that decodes itself: every character flickers through random glyphs and locks in from left to right.
+ * Runs when it appears and again whenever `text` changes; the real text is what assistive tech reads.
+ */
+export function ScrambleText({ text, duration = 700, className, as: Tag = 'span' }: ScrambleTextProps) {
+  const ref = useRef<HTMLElement>(null)
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      el.textContent = text
+      return
+    }
+    const started = performance.now()
+    let raf = 0
+    const frame = (now: number) => {
+      const settled = ((now - started) / duration) * text.length
+      let out = ''
+      for (let i = 0; i < text.length; i++) {
+        const ch = text[i]
+        // Spaces stay put so the words keep their shape while they resolve
+        out += i < settled || ch === ' ' ? ch : GLYPHS[Math.floor(Math.random() * GLYPHS.length)]
+      }
+      el.textContent = out
+      if (settled < text.length) raf = requestAnimationFrame(frame)
+    }
+    raf = requestAnimationFrame(frame)
+    return () => cancelAnimationFrame(raf)
+  }, [text, duration])
+
+  return (
+    <Tag ref={ref} className={className} aria-label={text}>
+      {text}
+    </Tag>
+  )
 }

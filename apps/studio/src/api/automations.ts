@@ -1,9 +1,22 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { toast } from '@studio/ui'
+import { away, notifySystem } from '../lib/notify'
 import { api } from './client'
 import type { Automation, AutomationCreate, AutomationServerEvent, AutomationUpdate } from './contracts/automations'
 
 export const automationKeys = { all: ['automations'] as const }
+
+/**
+ * The message that starts an automation's run in its chat is written by the server, not typed by the user
+ * (`studio/automations.py`, `_instruction`): "[Scheduled automation “Title”, …] …" or "[Trigger “Title”, … found N
+ * new items. …] …". Returns the automation's title and how the run came about, or undefined for any other message.
+ */
+export function automationRunOf(content: string): { title: string; trigger: boolean; items?: number } | undefined {
+  const m = /^\[(Scheduled automation|Trigger) “([^”]*)”/.exec(content)
+  if (!m) return undefined
+  const items = /found (\d+) new item/.exec(content.slice(0, 400))
+  return { title: m[2], trigger: m[1] === 'Trigger', items: items ? Number(items[1]) : undefined }
+}
 
 export const useAutomations = () =>
   useQuery({ queryKey: automationKeys.all, queryFn: () => api.get<Automation[]>('/automations') })
@@ -54,7 +67,7 @@ export function useRunAutomation() {
   })
 }
 
-/** Apply a pushed automation frame; a finished run notifies (a desktop notification too when the app is hidden). */
+/** Apply a pushed automation frame; a finished run notifies (a system notification when the app is not in front). */
 export function dispatchAutomation(qc: QueryClient, ev: AutomationServerEvent, open: (sessionId: string) => void) {
   switch (ev.type) {
     case 'automation.update':
@@ -66,16 +79,15 @@ export function dispatchAutomation(qc: QueryClient, ev: AutomationServerEvent, o
     case 'automation.run': {
       const title = ev.status === 'error' ? `“${ev.title}” failed` : ev.status === 'needs_approval' ? `“${ev.title}” needs you` : ev.title
       const body = ev.message.length > 160 ? `${ev.message.slice(0, 157)}…` : ev.message
-      const notify = ev.status === 'error' ? toast.error : ev.status === 'needs_approval' ? toast.warning : toast.info
-      notify(title, body)
+      toast({
+        title,
+        description: body,
+        tone: ev.status === 'error' ? 'error' : ev.status === 'needs_approval' ? 'warning' : 'info',
+        duration: 9000,
+        action: { label: 'Open chat', onClick: () => open(ev.session_id) },
+      })
       void qc.invalidateQueries({ queryKey: ['session', ev.session_id] })
-      if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
-        const n = new Notification(title, { body, tag: `automation-${ev.automation_id}` })
-        n.onclick = () => {
-          window.focus()
-          open(ev.session_id)
-        }
-      }
+      if (away()) notifySystem({ title, body, tag: `automation-${ev.automation_id}`, path: `/chat/${ev.session_id}` })
       return
     }
   }

@@ -21,7 +21,8 @@ from huggingface_hub.errors import HfHubHTTPError
 
 from . import catalog, db, settings
 from .catalog import GIB
-from .schemas import InstalledModel
+from .hub.variants import ENCODER_MIN_BYTES, ENCODER_SCALE
+from .schemas import InstalledModel, TextEncoderMode
 from .schemas_image import (ImageDefaults, ImageGuidance, ImageMode, ImageModelProfile, ImageScheduler,
                             ImageSizeRange)
 
@@ -82,6 +83,9 @@ FAMILIES: dict[str, Family] = {
                                  max_images=4),
     "ZImagePipeline": Family("Z-Image", "cfg", True, 30, 4.0, _ALL),
     "QwenImagePipeline": Family("Qwen-Image", "true-cfg", True, 30, 4.0, _ALL),
+    # One pipeline for text-to-image and editing; meant to be sampled without guidance (cfg 1 = off)
+    "QwenImage21Pipeline": Family("Qwen-Image 2.1", "true-cfg", True, 40, 1.0, ("txt2img", "edit"), size_step=32,
+                                  max_images=3),
     "QwenImageEditPipeline": Family("Qwen-Image-Edit", "true-cfg", True, 40, 4.0, ("edit", "inpaint"),
                                     max_images=1),
     "QwenImageEditPlusPipeline": Family("Qwen-Image-Edit", "true-cfg", True, 40, 4.0, ("edit",), max_images=3),
@@ -93,7 +97,7 @@ FAMILIES: dict[str, Family] = {
 _GENERIC = Family("Diffusers", "cfg", True, 28, 4.5, _T2I)
 
 # Local text-to-image families, best image quality first — what the agent uses when no model is named.
-QUALITY = ("HunyuanImage 3", "FLUX.2", "Qwen-Image", "FLUX.2 [klein]", "HunyuanImage 2.1", "FLUX.1 Krea", "FLUX.1",
+QUALITY = ("HunyuanImage 3", "FLUX.2", "Qwen-Image 2.1", "Qwen-Image", "FLUX.2 [klein]", "HunyuanImage 2.1", "FLUX.1 Krea", "FLUX.1",
            "FLUX.1 Kontext", "Chroma", "Z-Image", "Stable Diffusion 3", "Z-Image-Turbo", "FLUX.1 [schnell]", "SDXL",
            "Stable Diffusion 1.x")
 
@@ -298,8 +302,25 @@ def _component_bytes(folder: Path) -> int:
     return sum(_loaded_bytes(f) for f in fp16 or files)
 
 
-def weights_gb(lay: Layout) -> float:
-    total = 0
+def large_encoders(lay: Layout) -> dict[str, int]:
+    """The pipeline's text encoders big enough to be worth holding quantized: component name → bytes in bf16."""
+    if lay.pipeline_dir is None:
+        return {}
+    found = {}
+    for comp, spec in _read_json(lay.pipeline_dir / "model_index.json").items():
+        folder = lay.pipeline_dir / comp
+        if not comp.startswith("text_encoder") or not isinstance(spec, list) or spec[:1] != ["transformers"]:
+            continue
+        size = _component_bytes(folder) if folder.is_dir() else 0
+        if size >= ENCODER_MIN_BYTES:
+            found[comp] = size
+    return found
+
+
+def weights_gb(lay: Layout, encoder: TextEncoderMode | None = None) -> float:
+    """``encoder``: how the large text encoders are held (None: full precision)."""
+    total = 0.0
+    quantized = large_encoders(lay) if encoder not in (None, "full") else {}
     if lay.pipeline_dir is not None:
         index = _read_json(lay.pipeline_dir / "model_index.json")
         for comp in index:
@@ -308,17 +329,18 @@ def weights_gb(lay: Layout) -> float:
                 continue
             if lay.weights is not None and comp in ("transformer", "unet"):
                 continue
-            total += _component_bytes(folder)
+            total += quantized[comp] * ENCODER_SCALE[encoder] if comp in quantized and encoder else _component_bytes(folder)
     if lay.weights is not None:
         total += lay.weights.stat().st_size if lay.weights_format == "gguf" else _loaded_bytes(lay.weights)
     return total / GIB
 
 
-def vram_need_gb(m: InstalledModel) -> float:
-    """Estimated VRAM to hold ``m`` fully on the GPU and generate at 1024²."""
+def vram_need_gb(m: InstalledModel, encoder: TextEncoderMode | None = None) -> float:
+    """Estimated VRAM to hold ``m`` fully on the GPU and generate at 1024² (``encoder``: with its text encoder
+    held that way instead of the way the model is set to)."""
     if m.runtime == "diffusers":
         try:
-            return round(weights_gb(layout(m)) + _WORKING_SET_GB, 1)
+            return round(weights_gb(layout(m), encoder or m.text_encoder) + _WORKING_SET_GB, 1)
         except (LayoutError, OSError, ValueError, KeyError):
             pass
     spec = catalog.get(m.catalog_id)
@@ -337,6 +359,7 @@ def load_options(m: InstalledModel) -> dict[str, Any]:
         "full_checkpoint": lay.full_checkpoint,
         "pipeline_class": lay.pipeline_class,
         "quant": m.quant,
+        "text_encoder": m.text_encoder or "full",
     }
 
 
@@ -375,6 +398,9 @@ def local_profile(m: InstalledModel) -> ImageModelProfile:
         where = "its base model" if lay.pipeline_dir == Path(m.path) else f"the installed pipeline in {lay.pipeline_dir}"
         notes.append(f"{(lay.weights_format or '').upper()} {m.quant or ''} transformer ({lay.weights.name}) on the "
                      f"text encoders and VAE of {where}.")
+    if lay and m.text_encoder in ("8bit", "4bit") and large_encoders(lay):
+        notes.append(f"Text encoder held in {m.text_encoder.removesuffix('bit')} bits (quantized when the model "
+                     "loads; the first load also saves that copy next to the model, so later loads are quicker).")
     return ImageModelProfile(
         model_id=m.id, family=family.name, engine=cls or m.runtime, location="local", modes=list(family.modes),
         guidance=family.guidance, negative_prompt=family.negative, steps_range=(1, family.steps_max),

@@ -1,7 +1,8 @@
 import { lazy, Suspense, type ReactNode } from 'react'
-import { createBrowserRouter, RouterProvider } from 'react-router'
+import { createBrowserRouter } from 'react-router'
+import { RouterProvider } from 'react-router/dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { Spinner, Toaster, TooltipProvider } from '@studio/ui'
+import { Loader, Toaster, TooltipProvider } from '@studio/ui'
 import { ApiError } from '../api/client'
 import { areaRoute } from '../components/areaRoute'
 import { IMAGE_AREA } from '../features/image/sections'
@@ -67,8 +68,8 @@ const router = createBrowserRouter([
 
 function PageFallback() {
   return (
-    <div style={{ display: 'grid', placeItems: 'center', height: '100%', color: 'var(--text-3)' }}>
-      <Spinner size={20} />
+    <div style={{ display: 'grid', placeItems: 'center', height: '100%' }}>
+      <Loader size={150} />
     </div>
   )
 }

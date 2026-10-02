@@ -42,6 +42,9 @@ class ToolSpec:
     description: str
     parameters: dict[str, Any]  # JSON schema (type=object)
     needs_approval: bool = False
+    # For a tool that is only sometimes risky: given the arguments, the name of the tool whose approval rule
+    # applies to this call (the user allowing that tool allows this too), or None when the call needs no approval
+    asks_like: Callable[[dict[str, Any]], str | None] | None = None
 
 
 @dataclass
@@ -55,6 +58,15 @@ class ThinkingDelta:
 
 
 @dataclass
+class CallDraft:
+    """The model is writing a tool call: the tool's name as far as it is known, and how long the arguments are so
+    far. The call itself arrives with ``StepEnd``; this only says that something is being written."""
+
+    name: str
+    size: int
+
+
+@dataclass
 class StepEnd:
     """The model finished one response; ``calls`` are tools it wants to run."""
 
@@ -63,12 +75,13 @@ class StepEnd:
     raw: Any = None
     stop_reason: str | None = None
     prompt_tokens: int | None = None  # what the request actually used, when the provider reports it
+    cached_tokens: int | None = None  # the part of prompt_tokens read from the provider's prompt cache
     output_tokens: int | None = None  # tokens the model generated in this step, when the provider reports them
     generation_s: float | None = None  # the provider's own generation time (llama.cpp, Ollama); else the loop times it
 
 
 # ``Usage`` (from providers that bill per request, e.g. OpenRouter) arrives just before ``StepEnd``.
-StreamEvent = TextDelta | ThinkingDelta | Usage | StepEnd
+StreamEvent = TextDelta | ThinkingDelta | CallDraft | Usage | StepEnd
 
 
 @dataclass

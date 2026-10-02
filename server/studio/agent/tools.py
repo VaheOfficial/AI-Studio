@@ -51,7 +51,7 @@ SPECS: list[ToolSpec] = [
     ToolSpec("delete_model", "Delete an installed model and its files.",
              _obj({"model_id": {"type": "string"}}, ["model_id"]), needs_approval=True),
     ToolSpec("load_model", "Preload a model into GPU memory. Only for an explicit user request to preload (pass "
-             "force=true): generate_image, text_to_speech and generate_music load their model themselves — without "
+             "force=true): generate_image, text_to_speech and generate_music load their model themselves, without "
              "force this does nothing.",
              _obj({"model_id": {"type": "string"},
                    "force": {"type": "boolean", "description": "true only when the user asked to preload this model"}},
@@ -102,9 +102,14 @@ def _spec(name: str) -> ToolSpec | None:
     return BY_NAME.get(name) or next((s for s in connector_specs() if s.name == name), None)
 
 
-def needs_approval(name: str, auto_approve: list[str]) -> bool:
+def needs_approval(name: str, auto_approve: list[str], args: Any = None) -> bool:
     spec = _spec(name)
-    return bool(spec and spec.needs_approval and name not in auto_approve)
+    if spec is None:
+        return False
+    if spec.asks_like is not None:
+        stands_for = spec.asks_like(args if isinstance(args, dict) else {})
+        return stands_for is not None and stands_for not in auto_approve and name not in auto_approve
+    return spec.needs_approval and name not in auto_approve
 
 
 def validate_args(name: str, args: Any) -> dict[str, Any]:
@@ -243,7 +248,7 @@ async def _load_model(a: dict[str, Any]) -> ToolOutcome:
     if not a.get("force"):
         m = models.get(a["model_id"])
         use = {"image": "generate_image", "voice": "text_to_speech", "music": "generate_music"}.get(m.kind)
-        hint = f"Call {use} now — it loads {m.name} itself." if use else "Models load automatically when used."
+        hint = f"Call {use} now: it loads {m.name} itself." if use else "Models load automatically when used."
         return ToolOutcome(True, f"Not loaded (not needed). {hint}")
     m = await asyncio.to_thread(models.load, a["model_id"])
     return ToolOutcome(True, f"{m.name} is {m.status}")

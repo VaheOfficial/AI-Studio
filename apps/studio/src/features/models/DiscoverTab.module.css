@@ -1,7 +1,14 @@
 .discover {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 22px;
+}
+
+/* Search first, then where to look and what for */
+.finder {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .bar {
@@ -13,44 +20,63 @@
 
 .search {
   flex: 1;
-  min-width: 260px;
-  max-width: 520px;
+  min-width: 280px;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+}
+
+.tasks {
+  flex: 1;
+  min-width: 0;
 }
 
 .sort {
   width: 170px;
 }
 
-.blurb {
-  margin-top: -4px;
-  color: var(--text-3);
-  font-size: var(--text-xs);
-}
-
 .section {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  margin-top: 8px;
+}
+
+.headRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.headRow .heading {
+  flex: 1;
 }
 
 .heading {
   display: flex;
   align-items: baseline;
   gap: 8px;
+  min-width: 0;
   font-size: var(--text-md);
   font-weight: 600;
 }
 
 .heading svg {
   align-self: center;
+  flex-shrink: 0;
   color: var(--accent-text);
 }
 
 .sub {
+  overflow: hidden;
   color: var(--text-3);
   font-size: var(--text-xs);
   font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .grid {
@@ -62,4 +88,34 @@
 
 .grid[data-stale] {
   opacity: 0.55;
+}
+
+/* One row of picks, paged sideways. The padding leaves room for a card's hover lift and glow. */
+.shelf {
+  --fade-before: #000;
+  --fade-after: #000;
+  display: grid;
+  grid-auto-columns: minmax(300px, 340px);
+  grid-auto-flow: column;
+  gap: 12px;
+  margin: -6px -4px -14px;
+  padding: 6px 4px 14px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scroll-padding: 0 4px;
+  scrollbar-width: none;
+  mask-image: linear-gradient(90deg, var(--fade-before), #000 40px, #000 calc(100% - 40px), var(--fade-after));
+}
+
+.shelf > * {
+  scroll-snap-align: start;
+}
+
+.fadeBefore {
+  --fade-before: transparent;
+}
+
+.fadeAfter {
+  --fade-after: transparent;
 }

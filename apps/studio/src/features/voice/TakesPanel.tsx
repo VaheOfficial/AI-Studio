@@ -3,6 +3,8 @@ import { AnimatePresence, motion } from 'motion/react'
 import { AudioLines, Lock, RotateCcw, Star, Trash2 } from 'lucide-react'
 import { AudioPlayer, Badge, EmptyState, IconButton, SegmentedControl, Skeleton, Tooltip, cn } from '@studio/ui'
 import type { VoiceTake } from '../../api/contracts/voice'
+import type { Job } from '../../api/types'
+import { WorkingCard } from '../../components/Working'
 import { useDeleteTake, useLanguageName, useLockTake, useStarTake, useTakes } from '../../api/voice'
 import s from './TakesPanel.module.css'
 
@@ -15,7 +17,16 @@ const ago = (iso: string) => {
 }
 
 /** Every render with its settings: star, reuse, lock into its voice, delete, download. */
-export function TakesPanel({ onReuse, lockable }: { onReuse: (take: VoiceTake) => void; lockable: (take: VoiceTake) => boolean }) {
+export function TakesPanel({
+  onReuse,
+  lockable,
+  pending,
+}: {
+  onReuse: (take: VoiceTake) => void
+  lockable: (take: VoiceTake) => boolean
+  /** The render in progress, shown where its take will land. */
+  pending?: Job
+}) {
   const { data: takes, isLoading } = useTakes()
   const [filter, setFilter] = useState<'all' | 'starred'>('all')
   const shown = useMemo(() => (takes ?? []).filter((t) => filter === 'all' || t.starred), [takes, filter])
@@ -36,7 +47,7 @@ export function TakesPanel({ onReuse, lockable }: { onReuse: (take: VoiceTake) =
       </div>
       {isLoading ? (
         <Skeleton height={72} radius={12} />
-      ) : shown.length === 0 ? (
+      ) : shown.length === 0 && !pending ? (
         <EmptyState
           tint="var(--hue-voice)"
           icon={<AudioLines />}
@@ -46,6 +57,7 @@ export function TakesPanel({ onReuse, lockable }: { onReuse: (take: VoiceTake) =
       ) : (
         <div className={s.list}>
           <AnimatePresence initial={false}>
+            {pending && <WorkingCard key="working" hue="var(--hue-voice)" title="Rendering speech" message={pending.message} progress={pending.progress} />}
             {shown.map((t) => (
               <motion.div key={t.id} layout initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, height: 0 }}>
                 <TakeRow take={t} onReuse={onReuse} lockable={lockable(t)} />

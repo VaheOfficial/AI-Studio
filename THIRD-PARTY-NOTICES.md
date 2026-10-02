@@ -1,6 +1,6 @@
 # Third-party notices
 
-AI Studio is licensed under the GNU Affero General Public License v3.0 only (see [`LICENSE`](LICENSE)). Parts of it
+Grom AI Studio is licensed under the GNU Affero General Public License v3.0 only (see [`LICENSE`](LICENSE)). Parts of it
 are derived from, or include, the projects below. Their notices are reproduced here as their licenses require.
 Files derived from another project say so in their header ("ported from …"); those files were modified to fit
 this codebase.

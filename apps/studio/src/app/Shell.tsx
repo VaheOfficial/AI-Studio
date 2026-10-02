@@ -1,13 +1,21 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { NavLink, useLocation, useMatch, useNavigate, useOutlet } from 'react-router'
 import { AnimatePresence, motion } from 'motion/react'
-import { AlarmClock, AudioLines, Boxes, Clapperboard, House, Image, MessageSquareText, Moon, MoreHorizontal, Music, PanelLeft, Pencil, Plus, ScrollText, Search, Settings, Sun, Swords, Trash2 } from 'lucide-react'
-import { CommandPalette, ConfirmDialog, IconButton, Kbd, Menu, StatusDot, Tooltip, cn, type CommandAction } from '@studio/ui'
+import { AlarmClock, ArrowUpCircle, AudioLines, Boxes, Clapperboard, House, Image, MessageSquareText, Moon, MoreHorizontal, Music, PanelLeft, Pencil, Plus, ScrollText, Search, Settings, Skull, Sun, Swords, Trash2, Trophy } from 'lucide-react'
+import { CommandPalette, ConfirmDialog, IconButton, Kbd, Logo, Menu, StatusDot, Tooltip, cn, type CommandAction } from '@studio/ui'
+import type { GameSummary } from '../api/contracts/game'
+import { useDeleteGame, useGames } from '../api/game'
 import { useCapabilities, useDeleteSession, useSessions, useUpdateSession } from '../api/hooks'
 import type { AgentSession, FeatureId } from '../api/types'
 import { useLive, useRealtime } from '../api/live'
+import type { AreaProps } from '../components/AreaLayout'
+import { IMAGE_AREA } from '../features/image/sections'
+import { MUSIC_AREA } from '../features/music/sections'
+import { VIDEO_AREA } from '../features/video/sections'
+import { VOICE_AREA } from '../features/voice/sections'
 import { CreditPill } from '../features/openrouter/CreditPill'
 import { blocked } from '../lib/capabilities'
+import { useUpdates } from '../lib/desktop'
 import { formatBytes } from '../lib/format'
 import { shortcut } from '../lib/platform'
 import { useUI } from '../stores/ui'
@@ -22,15 +30,17 @@ interface NavItem {
   shortcut?: string
   /** Hidden on machines that can't run it. */
   feature?: FeatureId
+  /** An area with sections of its own: they unfold under this entry while the area is open. */
+  area?: AreaProps
 }
 
 const NAV: NavItem[] = [
   { to: '/', label: 'Home', icon: <House />, shortcut: '1' },
   { to: '/chat', label: 'Chat', icon: <MessageSquareText />, hue: 'var(--hue-text)', shortcut: '2' },
-  { to: '/image', label: 'Image', icon: <Image />, hue: 'var(--hue-image)', shortcut: '3', feature: 'image' },
-  { to: '/voice', label: 'Voice', icon: <AudioLines />, hue: 'var(--hue-voice)', shortcut: '4', feature: 'voice' },
-  { to: '/music', label: 'Music', icon: <Music />, hue: 'var(--hue-music)', shortcut: '5', feature: 'music' },
-  { to: '/video', label: 'Video', icon: <Clapperboard />, hue: 'var(--hue-video)', shortcut: '8', feature: 'video' },
+  { to: '/image', label: 'Image', icon: <Image />, hue: 'var(--hue-image)', shortcut: '3', feature: 'image', area: IMAGE_AREA },
+  { to: '/voice', label: 'Voice', icon: <AudioLines />, hue: 'var(--hue-voice)', shortcut: '4', feature: 'voice', area: VOICE_AREA },
+  { to: '/music', label: 'Music', icon: <Music />, hue: 'var(--hue-music)', shortcut: '5', feature: 'music', area: MUSIC_AREA },
+  { to: '/video', label: 'Video', icon: <Clapperboard />, hue: 'var(--hue-video)', shortcut: '8', feature: 'video', area: VIDEO_AREA },
   { to: '/models', label: 'Models', icon: <Boxes />, shortcut: '6' },
   { to: '/game', label: 'Game', icon: <Swords />, hue: 'var(--hue-game)', shortcut: '7', feature: 'game' },
   { to: '/automations', label: 'Automations', icon: <AlarmClock />, shortcut: '9' },
@@ -87,18 +97,13 @@ export function Shell() {
   const actions = useCommandActions()
   // Animate between sections, not between sub-routes like /chat/:id
   const section = '/' + (location.pathname.split('/')[1] ?? '')
+  // The glow behind the page takes the color of the area that is open
+  const hue = nav.find((n) => n.to === section)?.hue
 
   return (
     <div className={cn(s.shell, sidebarCollapsed && s.collapsed)}>
       <aside className={s.sidebar}>
-        <div className={s.brand}>
-          <Logo />
-          {!sidebarCollapsed && (
-            <span className={s.brandName}>
-              AI <span className="text-gradient">Studio</span>
-            </span>
-          )}
-        </div>
+        <Brand collapsed={sidebarCollapsed} />
 
         <button className={s.search} onClick={() => setCommandOpen(true)}>
           <Search size={15} />
@@ -110,13 +115,19 @@ export function Shell() {
           )}
         </button>
 
-        <nav className={s.nav} aria-label="Main">
-          {nav.map((item) => (
-            <SideLink key={item.to} item={item} collapsed={sidebarCollapsed} />
-          ))}
-        </nav>
+        <div className={s.navScroll}>
+          <nav className={s.nav} aria-label="Main">
+            {nav.map((item) => (
+              <Fragment key={item.to}>
+                <SideLink item={item} collapsed={sidebarCollapsed} />
+                {item.area && <AreaSections area={item.area} collapsed={sidebarCollapsed} />}
+                {item.to === '/game' && <Adventures collapsed={sidebarCollapsed} />}
+              </Fragment>
+            ))}
+          </nav>
 
-        {!sidebarCollapsed && <RecentChats />}
+          {!sidebarCollapsed && <RecentChats />}
+        </div>
 
         <div className={s.sidebarFooter}>
           {FOOTER_NAV.map((item) => (
@@ -126,11 +137,12 @@ export function Shell() {
         </div>
       </aside>
 
-      <div className={s.main}>
+      <div className={s.main} style={hue ? { ['--area-hue' as string]: hue } : undefined}>
         <header className={s.topbar}>
           <IconButton label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} icon={<PanelLeft />} onClick={toggleSidebar} tooltipSide="bottom" />
           <div className={s.topbarSpacer} />
           <CreditPill />
+          <UpdatePill />
           <ConnectionPill />
           <JobsTray />
           <IconButton
@@ -161,18 +173,27 @@ export function Shell() {
   )
 }
 
+/** The sections of an area this machine can run. */
+function useAreaSections(area: AreaProps | undefined) {
+  const { data: caps } = useCapabilities()
+  return useMemo(() => (area ? area.sections.filter((sec) => !blocked(caps, sec.needs ?? area.feature, sec.local)) : []), [area, caps])
+}
+
 function SideLink({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
   // Plain className/children (not NavLink's render functions): the collapsed rail's Tooltip trigger merges props
   // as strings and would turn a className function into garbage, leaving the link unstyled.
   const isActive = !!useMatch({ path: item.to, end: item.to === '/' })
+  // An open area hands the highlight to its section below; its own entry only stays lit
+  const sections = useAreaSections(item.area)
+  const unfolded = isActive && sections.length > 1
   const link = (
     <NavLink
       to={item.to}
       end={item.to === '/'}
-      className={cn(s.navItem, isActive && s.navActive)}
+      className={cn(s.navItem, isActive && s.navActive, unfolded && s.navOpen)}
       style={item.hue ? { ['--hue' as string]: item.hue } : undefined}
     >
-      {isActive && <motion.span layoutId="nav-active" className={s.navPill} transition={{ type: 'spring', stiffness: 500, damping: 40 }} />}
+      {isActive && !unfolded && <motion.span layoutId="nav-active" className={s.navPill} transition={{ type: 'spring', stiffness: 500, damping: 40 }} />}
       <span className={s.navIcon}>{item.icon}</span>
       {!collapsed && <span className={s.navLabel}>{item.label}</span>}
       {!collapsed && item.shortcut && <span className={s.navShortcut}>{shortcut(item.shortcut)}</span>}
@@ -184,6 +205,130 @@ function SideLink({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
     </Tooltip>
   ) : (
     link
+  )
+}
+
+/**
+ * An area's sections, unfolded under its entry while the area is open (so the page itself needs no navigation
+ * panel of its own). With the sidebar collapsed they stay as icons.
+ */
+function AreaSections({ area, collapsed }: { area: AreaProps; collapsed: boolean }) {
+  const sections = useAreaSections(area)
+  const open = !!useMatch({ path: `/${area.base}`, end: false })
+  const groups = [...new Set(sections.map((sec) => sec.group))]
+  return (
+    <AnimatePresence initial={false}>
+      {open && sections.length > 1 && (
+        <motion.div
+          className={s.subnav}
+          style={{ ['--hue' as string]: area.hue }}
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: 'auto', opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
+        >
+          {groups.map((group) => (
+            <Fragment key={group}>
+              {!collapsed && groups.length > 1 && <div className={s.subGroup}>{group}</div>}
+              {sections
+                .filter((sec) => sec.group === group)
+                .map((sec) => (
+                  <SubLink key={sec.id} to={`/${area.base}/${sec.id}`} label={sec.label} description={sec.description} icon={sec.icon} collapsed={collapsed} />
+                ))}
+            </Fragment>
+          ))}
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
+}
+
+function SubLink({ to, label, description, icon, collapsed, end = false }: { to: string; label: string; description: string; icon: ReactNode; collapsed: boolean; end?: boolean }) {
+  const isActive = !!useMatch({ path: to, end })
+  const link = (
+    <NavLink to={to} end={end} className={cn(s.subItem, isActive && s.subActive)} title={collapsed ? undefined : description}>
+      {isActive && <motion.span layoutId="nav-active" className={s.navPill} transition={{ type: 'spring', stiffness: 500, damping: 40 }} />}
+      <span className={s.navIcon}>{icon}</span>
+      {!collapsed && <span className={s.navLabel}>{label}</span>}
+    </NavLink>
+  )
+  return collapsed ? (
+    <Tooltip content={`${label} — ${description}`} side="right">
+      {link}
+    </Tooltip>
+  ) : (
+    link
+  )
+}
+
+/**
+ * Saved adventures, unfolded under Game while it is open, so the game page keeps a single panel of its own (the
+ * character sheet). With the sidebar collapsed only "New adventure" stays; the rest are in the command palette.
+ */
+function Adventures({ collapsed }: { collapsed: boolean }) {
+  const open = !!useMatch({ path: '/game', end: false })
+  return (
+    <AnimatePresence initial={false}>
+      {open && (
+        <motion.div
+          className={s.subnav}
+          style={{ ['--hue' as string]: 'var(--hue-game)' }}
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: 'auto', opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
+        >
+          <AdventureList collapsed={collapsed} />
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
+}
+
+function AdventureList({ collapsed }: { collapsed: boolean }) {
+  const { data: games = [] } = useGames()
+  return (
+    <>
+      <SubLink to="/game" end label="New adventure" description="Start a new story" icon={<Plus />} collapsed={collapsed} />
+      {!collapsed && games.length > 0 && <div className={s.subGroup}>Adventures</div>}
+      {!collapsed && games.map((g) => <Adventure key={g.id} game={g} />)}
+    </>
+  )
+}
+
+function Adventure({ game }: { game: GameSummary }) {
+  const navigate = useNavigate()
+  const active = !!useMatch(`/game/${game.id}`)
+  const remove = useDeleteGame()
+  const [confirming, setConfirming] = useState(false)
+  const meta = `Lv ${game.level} ${game.role} · ${game.turns} ${game.turns === 1 ? 'turn' : 'turns'}`
+  return (
+    <div className={cn(s.subItem, s.subRow, active && s.subActive)}>
+      {active && <motion.span layoutId="nav-active" className={s.navPill} transition={{ type: 'spring', stiffness: 500, damping: 40 }} />}
+      <NavLink to={`/game/${game.id}`} className={s.subRowLink} title={`${game.title} — ${meta}`}>
+        <span className={s.navLabel}>{game.title}</span>
+        {game.status === 'dead' && <Skull className={s.subFallen} aria-label="Fallen" />}
+        {game.status === 'won' && <Trophy className={s.subWon} aria-label="Won" />}
+      </NavLink>
+      <span className={s.recentMenu}>
+        <Menu
+          trigger={<IconButton size="sm" label="Adventure actions" icon={<MoreHorizontal />} />}
+          items={[{ label: 'Delete', icon: <Trash2 size={14} />, danger: true, onSelect: () => setConfirming(true) }]}
+        />
+      </span>
+      <ConfirmDialog
+        open={confirming}
+        onOpenChange={setConfirming}
+        title="Delete this adventure?"
+        description={`“${game.title}” and its whole story are deleted.`}
+        confirmLabel="Delete"
+        tone="danger"
+        onConfirm={async () => {
+          await remove.mutateAsync(game.id)
+          if (active) navigate('/game')
+        }}
+      />
+    </div>
   )
 }
 
@@ -330,6 +475,21 @@ function MemoryMeter({ collapsed, used, total, cpu }: { collapsed: boolean; used
   )
 }
 
+/** Desktop app: a newer release exists. Opens Settings, where it is installed. */
+function UpdatePill() {
+  const { data } = useUpdates()
+  const navigate = useNavigate()
+  if (!data?.available && !data?.needsInstaller) return null
+  return (
+    <Tooltip content={`Version ${data.latest} is available`} side="bottom">
+      <button className={cn(s.conn, s.connUpdate)} onClick={() => navigate('/settings')}>
+        <ArrowUpCircle size={13} />
+        <span>Update</span>
+      </button>
+    </Tooltip>
+  )
+}
+
 function ConnectionPill() {
   const status = useLive((st) => st.status)
   const version = useLive((st) => st.version)
@@ -347,6 +507,7 @@ function ConnectionPill() {
 function useCommandActions(): CommandAction[] {
   const navigate = useNavigate()
   const { data: sessions } = useSessions()
+  const { data: games } = useGames()
   const { setTheme, theme, toggleSidebar } = useUI()
   const { data: caps } = useCapabilities()
   const pages = useNav()
@@ -378,26 +539,36 @@ function useCommandActions(): CommandAction[] {
       icon: <MessageSquareText />,
       onRun: () => navigate(`/chat/${c.id}`),
     }))
+    const adventures: CommandAction[] = blocked(caps, 'game')
+      ? []
+      : (games ?? []).slice(0, 12).map((g) => ({
+          id: `game-${g.id}`,
+          label: g.title,
+          group: 'Adventures',
+          icon: <Swords />,
+          onRun: () => navigate(`/game/${g.id}`),
+        }))
     const prefs: CommandAction[] = [
       { id: 'theme', label: `Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`, group: 'Preferences', icon: theme === 'dark' ? <Sun /> : <Moon />, onRun: () => setTheme(theme === 'dark' ? 'light' : 'dark') },
       { id: 'sidebar', label: 'Toggle sidebar', group: 'Preferences', icon: <PanelLeft />, shortcut: shortcut('B'), onRun: toggleSidebar },
     ]
-    return [...create, ...nav, ...chats, ...prefs]
-  }, [caps, pages, navigate, sessions, theme, setTheme, toggleSidebar])
+    return [...create, ...nav, ...chats, ...adventures, ...prefs]
+  }, [caps, pages, navigate, sessions, games, theme, setTheme, toggleSidebar])
 }
 
-function Logo() {
+/** The mark and the name. The mark beats its wings now and then, and keeps at it while the pointer is over it. */
+function Brand({ collapsed }: { collapsed: boolean }) {
+  const [hover, setHover] = useState(false)
   return (
-    <svg className={s.logo} viewBox="0 0 32 32" aria-hidden>
-      <defs>
-        <linearGradient id="logo-g" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#a78bfa" />
-          <stop offset="0.5" stopColor="#818cf8" />
-          <stop offset="1" stopColor="#22d3ee" />
-        </linearGradient>
-      </defs>
-      <rect width="32" height="32" rx="9" fill="var(--bg-3)" />
-      <path d="M16 5.5 18.6 13.4 26.5 16 18.6 18.6 16 26.5 13.4 18.6 5.5 16 13.4 13.4Z" fill="url(#logo-g)" />
-    </svg>
+    <div className={s.brand} onPointerEnter={() => setHover(true)} onPointerLeave={() => setHover(false)}>
+      <span className={s.logo}>
+        <Logo size={collapsed ? 36 : 42} mode={hover ? 'working' : 'alive'} glow />
+      </span>
+      {!collapsed && (
+        <span className={s.brandName}>
+          <span className={s.brandMark}>GROM</span> AI Studio
+        </span>
+      )}
+    </div>
   )
 }

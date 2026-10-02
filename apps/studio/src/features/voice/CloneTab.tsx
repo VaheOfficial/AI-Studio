@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router'
-import { ArrowRight, AudioLines, RefreshCw, Save, Sparkles } from 'lucide-react'
+import { ArrowRight, AudioLines, Fingerprint, RefreshCw, Save, Sparkles } from 'lucide-react'
 import { AudioPlayer, Button, Card, EmptyState, Field, Input, Progress, Textarea } from '@studio/ui'
 import { AUTO_VOICE, type StagedReference } from '../../api/contracts/voice'
 import { useCreateProfile, useOnJobDone, useRetranscribe, useSpeak } from '../../api/voice'
 import { SectionFallback } from '../../components/AreaLayout'
-import { StudioLayout } from '../../components/Page'
+import { StudioHead, StudioLayout } from '../../components/Page'
 import { AUTO_LANGUAGE, LanguagePicker } from './LanguagePicker'
 import { ReferenceInput } from './ReferenceInput'
 import { useOmniVoice } from './useOmniVoice'
@@ -92,6 +92,7 @@ export function CloneTab() {
 
   const controls = (
     <div className={s.controls}>
+      <StudioHead icon={<Fingerprint />} title="Clone" subtitle="A voice from a short clip" />
       <Field label="Reference clip" hint="Zero-shot: no training. One speaker, little background noise.">
         <ReferenceInput staged={staged} onStaged={onStaged} />
       </Field>

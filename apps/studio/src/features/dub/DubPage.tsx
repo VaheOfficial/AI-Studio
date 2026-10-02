@@ -11,6 +11,7 @@ import { useCreateDubProject, useDeleteDubProject, useDubProjects } from './api'
 import { DubEditor } from './DubEditor'
 import { RuntimeGate } from './RuntimeGate'
 import { fmtDuration } from './format'
+import { PageHeader } from '../../components/Page'
 import s from './DubPage.module.css'
 
 /** Voice → Dub: the project list / new dub form, or the editor for `?project=<id>`. */
@@ -28,21 +29,18 @@ function Projects({ onOpen }: { onOpen: (id: string) => void }) {
   const languageName = useLanguageName()
   return (
     <div className={s.page}>
-      <header className={s.header}>
-        <span className={s.headerIcon}>
-          <Clapperboard />
-        </span>
-        <div>
-          <h1 className={s.title}>Dubbing</h1>
-          <p className={s.subtitle}>Translate a video or recording into 600+ languages in the speakers’ own voices.</p>
-        </div>
-      </header>
+      <PageHeader
+        hue="var(--hue-voice)"
+        icon={<Clapperboard />}
+        title="Dubbing"
+        subtitle="Translate a video or recording into 600+ languages in the speakers’ own voices."
+      />
       <RuntimeGate />
       <NewDub onCreated={onOpen} />
       <section className={s.list}>
         <h2 className={s.sectionTitle}>Projects</h2>
         {isLoading ? (
-          <div className={s.grid}>
+          <div className={`${s.grid} ui-stagger`}>
             {[0, 1, 2].map((i) => (
               <Skeleton key={i} height={188} radius={14} />
             ))}
@@ -50,10 +48,10 @@ function Projects({ onOpen }: { onOpen: (id: string) => void }) {
         ) : !projects?.length ? (
           <EmptyState tint="var(--hue-voice)" icon={<Film />} title="No dubs yet" description="Your dubbing projects appear here." />
         ) : (
-          <div className={s.grid}>
+          <div className={`${s.grid} ui-stagger`}>
             {projects.map((p, i) => (
-              <motion.div key={p.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(i * 0.03, 0.3) }}>
-                <Card padding="none" interactive className={s.card} onClick={() => onOpen(p.id)}>
+              <motion.div key={p.id} className={s.cell} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(i * 0.03, 0.3) }}>
+                <Card padding="none" interactive spotlight tilt tint="var(--hue-voice)" className={s.card} onClick={() => onOpen(p.id)}>
                   <div className={s.thumb}>
                     {p.thumb_url ? <img src={p.thumb_url} alt="" /> : p.input_type === 'audio' ? <Music2 /> : <Film />}
                     <span className={s.duration}>{fmtDuration(p.duration)}</span>

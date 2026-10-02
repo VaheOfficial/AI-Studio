@@ -10,34 +10,6 @@
   overflow-y: auto;
 }
 
-.header {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.header h1 {
-  font-size: var(--text-xl);
-}
-
-.header p {
-  margin-top: 2px;
-  color: var(--text-3);
-  font-size: var(--text-md);
-}
-
-.headerIcon {
-  display: grid;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  flex-shrink: 0;
-  border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--hue) 12%, var(--bg-2));
-  border: 1px solid color-mix(in srgb, var(--hue) 25%, transparent);
-  color: var(--hue);
-}
-
 .hint {
   color: var(--text-3);
   font-size: var(--text-xs);

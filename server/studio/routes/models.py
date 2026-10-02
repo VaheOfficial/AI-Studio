@@ -11,7 +11,7 @@ from ..jobs import JobContext, JobError, jobs
 from ..models import ModelError, models
 from ..runtimes import RUNTIMES, WorkerError, runtimes
 from ..runtimes import envs
-from ..schemas import CatalogEntry, InstalledModel, Job, RuntimeInfo
+from ..schemas import CatalogEntry, InstalledModel, Job, ModelPatch, RuntimeInfo
 from . import StudioRouter
 
 router = StudioRouter(prefix="/api")
@@ -52,6 +52,19 @@ async def delete_model(model_id: str) -> Response:
     except OSError as exc:
         raise HTTPException(500, f"Could not delete model files: {exc}") from exc
     return Response(status_code=204)
+
+
+@router.patch("/models/{model_id}", response_model=InstalledModel)
+async def patch_model(model_id: str, body: ModelPatch) -> InstalledModel:
+    """Change how an installed model is loaded (a loaded model is unloaded; the change applies at its next load)."""
+    try:
+        if body.text_encoder is not None:
+            return await asyncio.to_thread(models.set_text_encoder, model_id, body.text_encoder)
+        return await asyncio.to_thread(models.get, model_id)
+    except ModelError as exc:
+        raise _http(exc) from exc
+    except (WorkerError, ollama.OllamaError) as exc:
+        raise HTTPException(502, str(exc)) from exc
 
 
 @router.post("/models/{model_id}/load", response_model=InstalledModel)

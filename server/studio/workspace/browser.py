@@ -1,5 +1,13 @@
-"""The agent's browser: Playwright driving the installed Edge (or Chrome / Playwright's Chromium) headless,
-one page per chat session in one persistent profile, so logins survive across chats and restarts.
+"""The agent's browser, one page per chat session, driven with Playwright.
+
+Under the desktop app it is the app's own browser: Electron is Chromium, and the shell keeps windowless
+(offscreen) pages for the agent in a session of their own (see ``apps/desktop/src/main.js``, "the agent's browser").
+The server reaches them over the DevTools protocol at ``STUDIO_BROWSER_CDP``. They are real browser pages that are
+never a window on any system, so there is nothing to hide and nothing a headless browser would give away.
+
+Run without the shell (``pnpm server``), it is the installed Edge (or Chrome / Playwright's Chromium) started
+headless on a persistent profile. A headless browser says so in its user agent, and many sites answer that with a
+challenge, an empty page or wrong results.
 
 Ported from OpenMuse ``apps/worker/src/browser.ts`` (viewport 1280×800, per-session serial queue, dialogs
 dismissed, popups folded into the session page, fixed ``innerText`` read) with their polling screenshot
@@ -12,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import contextlib
+import os
 import re
 import time
 import uuid
@@ -31,6 +40,10 @@ WIDTH, HEIGHT = 1280, 800
 PROFILE_DIR = config.DATA_DIR / "browser" / "profile"
 SHOTS_DIR = config.WORKSPACE_DIR / "browser"
 NAV_TIMEOUT_MS = 30_000
+# Set by the desktop shell: where its browser answers the DevTools protocol, and the title of the page of the
+# agent's session that new pages are opened from
+EMBEDDED = os.environ.get("STUDIO_BROWSER_CDP", "")
+ANCHOR_TITLE = "grom-agent-browser"
 READ_LIMIT = 16_000  # chars of page text / snapshot per read (~5K tokens): pages are long, context is not
 _SNAP_NOISE = re.compile(r" \[cursor=pointer\]| \[active\]")
 _SNAP_EMPTY = re.compile(r"^\s*- (generic|group|none|presentation|list|listitem)( \[ref=\w+\])?:?$")
@@ -78,6 +91,7 @@ class BrowserManager:
         self._start_lock = asyncio.Lock()
         self._sessions: dict[str, _Session] = {}
         self.engine = ""
+        self._anchor: Page | None = None  # in the app's browser: the page new pages are opened from
 
     # ------------------------------ lifecycle ------------------------------
 
@@ -85,31 +99,73 @@ class BrowserManager:
         async with self._start_lock:
             if self._context is not None:
                 return self._context
-            PROFILE_DIR.mkdir(parents=True, exist_ok=True)
             self._pw = await async_playwright().start()
-            errors = []
-            for channel in ("msedge", "chrome", None):
-                try:
-                    ctx = await self._pw.chromium.launch_persistent_context(
-                        str(PROFILE_DIR), channel=channel, headless=True, accept_downloads=False,
-                        viewport={"width": WIDTH, "height": HEIGHT}, args=["--disable-extensions"])
-                except PlaywrightError as exc:
-                    errors.append(f"{channel or 'chromium'}: {str(exc).splitlines()[0]}")
-                    continue
-                self.engine = channel or "chromium"
-                break
-            else:
+            try:
+                ctx = await (self._embedded() if EMBEDDED else self._launched())
+            except BaseException:
                 await self._pw.stop()
                 self._pw = None
-                raise WorkspaceError("No browser could be started (tried Edge, Chrome and Playwright's Chromium). "
-                                     "Install Microsoft Edge or run `playwright install chromium` in the server "
-                                     "venv. " + "; ".join(errors))
-            for stale in ctx.pages:
-                await stale.close()
-            ctx.on("close", lambda _ctx: self._on_context_closed())
+                raise
             self._context = ctx
-            events.log("info", "browser", f"Agent browser started ({self.engine}, headless)")
+            events.log("info", "browser", f"Agent browser started ({self.engine})")
             return ctx
+
+    async def _embedded(self) -> BrowserContext:
+        """The app's own browser. Its pages are the shell's: nothing here is closed that this class did not open."""
+        assert self._pw is not None
+        try:
+            connected = await self._pw.chromium.connect_over_cdp(EMBEDDED)
+        except PlaywrightError as exc:
+            raise WorkspaceError(f"Could not reach the app's browser: {str(exc).splitlines()[0]}") from exc
+        ctx = connected.contexts[0]
+        self._anchor = None
+        for page in ctx.pages:
+            with contextlib.suppress(PlaywrightError):
+                if await page.title() == ANCHOR_TITLE:
+                    self._anchor = page
+        if self._anchor is None:
+            await connected.close()
+            raise WorkspaceError("The app's browser has no page for the agent; restart the app")
+        connected.on("disconnected", lambda _b: self._on_context_closed())
+        self.engine = "the app's browser"
+        return ctx
+
+    async def _launched(self) -> BrowserContext:
+        """An installed browser, headless, on a profile in the data folder."""
+        assert self._pw is not None
+        PROFILE_DIR.mkdir(parents=True, exist_ok=True)
+        errors = []
+        for channel in ("msedge", "chrome", None):
+            try:
+                ctx = await self._pw.chromium.launch_persistent_context(
+                    str(PROFILE_DIR), channel=channel, headless=True, accept_downloads=False,
+                    viewport={"width": WIDTH, "height": HEIGHT}, args=["--disable-extensions"])
+            except PlaywrightError as exc:
+                errors.append(f"{channel or 'chromium'}: {str(exc).splitlines()[0]}")
+                continue
+            self.engine = f"{channel or 'chromium'}, headless"
+            break
+        else:
+            raise WorkspaceError("No browser could be started (tried Edge, Chrome and Playwright's Chromium). "
+                                 "Install Microsoft Edge or run `playwright install chromium` in the server "
+                                 "venv. " + "; ".join(errors))
+        for stale in ctx.pages:
+            await stale.close()
+        self._anchor = None
+        ctx.on("close", lambda _ctx: self._on_context_closed())
+        return ctx
+
+    async def _new_page(self, ctx: BrowserContext) -> Page:
+        """A page for one chat. In the app's browser a page cannot be created from outside: the anchor page opens
+        it, and the shell makes everything opened in the agent's session another windowless page."""
+        if self._anchor is None:
+            return await ctx.new_page()
+        try:
+            async with self._anchor.expect_popup(timeout=10_000) as opened:
+                await self._anchor.evaluate("window.open('about:blank')")
+            return await opened.value
+        except PlaywrightError as exc:
+            raise WorkspaceError(f"The app's browser could not open a page: {str(exc).splitlines()[0]}") from exc
 
     def _on_context_closed(self) -> None:
         self._context = None
@@ -118,10 +174,15 @@ class BrowserManager:
             bus.publish(EvBrowserUpdate(state=self._closed_state(sid)))
 
     async def shutdown(self) -> None:
-        ctx, pw = self._context, self._pw
+        ctx, pw, sessions = self._context, self._pw, list(self._sessions.values())
         self._context, self._pw = None, None
         self._sessions.clear()
-        if ctx is not None:
+        if ctx is not None and self._anchor is not None:
+            # The app's browser stays; only the pages opened here go
+            for s in sessions:
+                with contextlib.suppress(Exception):
+                    await s.page.close()
+        elif ctx is not None:
             with contextlib.suppress(Exception):
                 await ctx.close()
         if pw is not None:
@@ -133,7 +194,7 @@ class BrowserManager:
         if s is not None and not s.page.is_closed():
             return s
         ctx = await self._ctx()
-        page = await ctx.new_page()
+        page = await self._new_page(ctx)
         page.set_default_timeout(10_000)
         s = _Session(session_id, page)
         self._sessions[session_id] = s
@@ -402,6 +463,20 @@ class BrowserManager:
             except PlaywrightError as exc:
                 raise WorkspaceError(f"Could not read the page: {str(exc).splitlines()[0]}") from exc
         return s.page.url, title, content[:READ_LIMIT], len(content) > READ_LIMIT
+
+    async def page(self, session_id: str, script: str | None = None) -> tuple[str, str, str, str, Any]:
+        """(url, title, html, visible text, value of ``script``) of the chat's page: what a tool needs to work out
+        what on the page is worth handing to the model. ``script`` is a JavaScript function evaluated in the page."""
+        s = await self.agent_page(session_id)
+        async with s.lock:
+            try:
+                html = await s.page.content()
+                text = await s.page.evaluate("() => document.body ? document.body.innerText : ''")
+                value = await s.page.evaluate(script) if script else None
+                title = await s.page.title()
+            except PlaywrightError as exc:
+                raise WorkspaceError(f"Could not read the page: {str(exc).splitlines()[0]}") from exc
+        return s.page.url, title, html, text, value
 
     def console_tail(self, session_id: str, errors_only: bool = True, limit: int = 20) -> list[ConsoleEntry]:
         s = self._sessions.get(session_id)

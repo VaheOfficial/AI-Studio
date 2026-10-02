@@ -1,21 +1,27 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router'
-import { AnimatePresence, motion } from 'motion/react'
 import { ArrowRight, Image as ImageIcon, Sparkles, Wand2 } from 'lucide-react'
-import { Button, EmptyState, Field, GridBackdrop, Kbd, Textarea } from '@studio/ui'
+import { Button, EmptyState, Field, GridBackdrop, Kbd, Suggestions, Textarea } from '@studio/ui'
 import { useDeleteOutput, useOutputs } from '../../api/hooks'
 import { useGenerateImage, useImagePreview, useStars, useToggleStar } from '../../api/image'
 import { useJob } from '../../api/live'
 import type { Output } from '../../api/types'
-import { OutputView } from '../../components/OutputView'
-import { StudioLayout } from '../../components/Page'
-import { Developing } from '../../components/Developing'
+import { StudioHead, StudioLayout } from '../../components/Page'
 import { PAGE_KEY, buildRequest, useImageDraft, useImageHandoff, useTakeHandoff } from './draft'
 import { ImageDetail } from './ImageDetail'
 import { ImageModelPicker } from './ImageModelPicker'
-import { ImageSettings, ModelNotes } from './ImageSettings'
+import { ImageSettings } from './ImageSettings'
 import { useImageModelChoice } from './modelChoice'
+import { ResultTiles } from './ResultTiles'
 import s from './Studio.module.css'
+
+// Starting points for an empty canvas
+const IDEAS = [
+  'A lighthouse on a basalt cliff at blue hour, volumetric fog, 35mm film grain',
+  'Isometric cutaway of a tiny workshop, warm lamps, clay render',
+  'Macro photo of a dew-covered spider web at sunrise, shallow depth of field',
+  'Vintage travel poster of a mountain railway, bold flat colors',
+]
 
 const RECENT = 48
 
@@ -63,12 +69,7 @@ export default function GeneratePage() {
         submit()
       }}
     >
-      <div className={s.head}>
-        <span className={s.headIcon}>
-          <ImageIcon />
-        </span>
-        <h1>Generate</h1>
-      </div>
+      <StudioHead icon={<ImageIcon />} title="Generate" subtitle="Text to image" />
 
       <ImageModelPicker {...choice} onSelect={choice.select} />
 
@@ -93,7 +94,6 @@ export default function GeneratePage() {
       </Field>
 
       {profile && <ImageSettings profile={profile} draft={draft} patch={patch} />}
-      {profile && <ModelNotes profile={profile} />}
 
       <div className={s.submit}>
         <Button
@@ -109,12 +109,12 @@ export default function GeneratePage() {
         </Button>
         <span className={s.hint}>
           <Kbd>Ctrl</Kbd> <Kbd>Enter</Kbd>
+          {profile?.cost && <span className={s.cost}>{profile.cost}</span>}
         </span>
       </div>
     </form>
   )
 
-  const pendingTiles = running ? pending : 0
 
   return (
     <StudioLayout controls={controls} hue="var(--hue-image)">
@@ -122,34 +122,23 @@ export default function GeneratePage() {
       <div className={s.canvas}>
         {recent.length === 0 && !running ? (
           <EmptyState
+            size="lg"
+            backdrop
             tint="var(--hue-image)"
             icon={<Wand2 />}
             title="Your canvas is empty"
-            description="Describe an image on the left. Results land here and in the Gallery."
-          />
+            description="Describe an image on the left, or start from one of these. Results land here and in the Gallery."
+          >
+            <Suggestions items={IDEAS} icon={<Sparkles />} onPick={(prompt) => patch({ prompt })} />
+          </EmptyState>
         ) : (
           <>
-            <motion.div layout className={s.gallery}>
-              <AnimatePresence initial={false}>
-                {Array.from({ length: pendingTiles }, (_, i) => (
-                  <motion.div
-                    key={`pending-${jobId}-${i}`}
-                    layout
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0 }}
-                    style={{ aspectRatio: `${draft.width} / ${draft.height}` }}
-                  >
-                    <Developing progress={job?.progress ?? -1} message={job?.message} preview={i === 0 ? preview?.image : undefined} />
-                  </motion.div>
-                ))}
-                {recent.map((o) => (
-                  <motion.div key={o.id} layout>
-                    <OutputView output={o} onOpen={setViewing} onDelete={(x) => del.mutate(x.id)} />
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-            </motion.div>
+            <ResultTiles
+              outputs={recent}
+              pending={running ? { count: pending, width: draft.width, height: draft.height, job, preview: preview?.image } : undefined}
+              onOpen={setViewing}
+              onDelete={(x) => del.mutate(x.id)}
+            />
             {outputs.length > RECENT && (
               <div className={s.more}>
                 <Button asChild variant="ghost" iconRight={<ArrowRight />}>

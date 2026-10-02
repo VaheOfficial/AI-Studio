@@ -35,13 +35,19 @@ class EnvSpec:
         return hashlib.sha256(json.dumps(asdict(self), sort_keys=True).encode()).hexdigest()[:16]
 
 
+DIFFUSERS = ("diffusers @ https://github.com/huggingface/diffusers/archive/"
+             "578c9b2c6636ab2424a0e56186268b83623656b2.zip")  # 0.41.0.dev0, 2026-10-01
+
 ENV_SPECS: dict[str, EnvSpec] = {
     "image": EnvSpec(
         name="image",
         torch=["torch", "torchvision"],
-        # diffusers 0.40: FLUX.2 / Z-Image / Qwen-Image / Wan / LTX-2 pipelines; gguf + bitsandbytes load quantized
-        # variants; av: LTX-2's image-to-video re-compresses the start frame the way the model was trained
-        packages=["diffusers>=0.40", "transformers>=4.56", "accelerate>=1.6", "safetensors", "sentencepiece",
+        # diffusers: FLUX.2 / Z-Image / Qwen-Image / Wan / LTX-2 pipelines. Pinned to a commit after 0.40.0, the
+        # first with Qwen-Image 2.1 (QwenImage21Pipeline, and its transformer loadable from a GGUF); it comes as a
+        # source archive, so no git is needed. Go back to a release once one has it. transformers 5.17: Qwen3-VL,
+        # that model's text encoder. gguf + bitsandbytes load quantized variants (and hold text encoders in 8 or 4
+        # bits); av: LTX-2's image-to-video re-compresses the start frame the way the model was trained
+        packages=[DIFFUSERS, "transformers>=5.17", "accelerate>=1.6", "safetensors", "sentencepiece",
                   "protobuf", "pillow", "einops", "tiktoken", "gguf>=0.10", "bitsandbytes>=0.45", "av>=14"],
         verify=("import torch, diffusers, transformers, accelerate, gguf, bitsandbytes, av; "
                 "assert torch.cuda.is_available(), 'CUDA not available'"),
@@ -118,6 +124,30 @@ def is_ready(name: str) -> bool:
 
 
 _create_lock = threading.Lock()
+
+
+def is_outdated(name: str) -> bool:
+    """Installed, but for an earlier version of the app: what the env needs has changed since. (An env that is
+    being installed right now has no marker and is not "outdated".)"""
+    try:
+        marker = json.loads((env_dir(name) / MARKER).read_text())
+    except (OSError, ValueError):
+        return False
+    return env_python(name).exists() and marker.get("digest") != ENV_SPECS[name].digest
+
+
+def knows_diffusers_class(env: str, class_name: str) -> bool | None:
+    """Whether the diffusers installed in ``env`` has ``class_name`` (a pipeline or model class). None when that
+    can't be told: the env isn't installed, or is about to be updated."""
+    if not is_ready(env):
+        return None
+    found = sorted(env_dir(env).glob("**/site-packages/diffusers/__init__.py"))
+    if not found:
+        return None
+    try:
+        return f'"{class_name}"' in found[0].read_text(encoding="utf-8")
+    except OSError:
+        return None
 
 
 def ensure_env_job(name: str, runtime_id: str, force: bool = False) -> Job | None:

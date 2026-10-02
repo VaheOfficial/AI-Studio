@@ -14,9 +14,14 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from ..schemas import ModelKind, RuntimeId, WeightFormat
+from ..schemas import ModelKind, RuntimeId, TextEncoderMode, WeightFormat
 
 GIB = 2**30
+
+# Text encoders of image pipelines can be held quantized (bitsandbytes, at load time). What is left of an
+# encoder's size: its linear layers shrink to 8 or 4 bits, embeddings and norms stay as they are.
+ENCODER_SCALE: dict[TextEncoderMode, float] = {"full": 1.0, "8bit": 0.56, "4bit": 0.34}
+ENCODER_MIN_BYTES = 2 * GIB  # smaller encoders (CLIP) are left alone: nothing to gain
 
 TASK_KINDS: dict[str, ModelKind] = {
     "text-generation": "text", "image-text-to-text": "text", "text2text-generation": "text",
@@ -36,6 +41,8 @@ _WEIGHT = re.compile(r"^(?P<name>[^/.]+)(?:\.(?P<v>fp16|bf16|fp32|fp8|int8))?(?:
 _INDEX = re.compile(r"^(?P<name>[^/.]+)\.(?P<ext>safetensors|bin)\.index(?:\.(?P<v>fp16|bf16|fp32|fp8|int8))?\.json$")
 _AUX_EXT = (".json", ".txt", ".model", ".jinja", ".tiktoken", ".py")
 _SINGLE_FILE_MIN = 500 * 2**20  # root checkpoints smaller than this are VAEs/LoRAs, not models
+# Single-file image weights the diffusers runtime can't read: Apple MLX, and quantizations ComfyUI nodes define
+_FOREIGN = re.compile(r"(?<![a-z0-9])(mlx|nvfp4|svdq|int8|int4|nf4)(?![a-z0-9])", re.I)
 LLM_RUNTIMES: list[RuntimeId] = ["llamacpp", "lmstudio", "ollama"]
 
 
@@ -210,8 +217,15 @@ def _single_files(files: dict[str, int], kind: ModelKind | None) -> list[Draft]:
             continue
         m = _PRECISION.search(p)
         quant = m.group(1).lower().replace("-", "_") if m else None
-        drafts.append(Draft(id=f"file:{p}", label=p.removesuffix(".safetensors"), format="safetensors", kind="image",
-                            files=[p], size=size, runtimes=["diffusers"], quant=quant, needs_base=True))
+        d = Draft(id=f"file:{p}", label=p.removesuffix(".safetensors"), format="safetensors", kind="image",
+                  files=[p], size=size, runtimes=["diffusers"], quant=quant, needs_base=True)
+        foreign = _FOREIGN.search(p)
+        if foreign:  # a safetensors file is only a container: these hold weights packed for another runtime
+            d.runtimes, d.needs_base = [], False
+            d.notes.append("MLX weights run on Apple Silicon only." if foreign.group(1).lower() == "mlx" else
+                           f"{foreign.group(1).upper()} files are packed for ComfyUI; the image runtime loads GGUF, "
+                           "fp8 and full-precision weights. Pick a GGUF build instead.")
+        drafts.append(d)
     return sorted(drafts, key=lambda d: d.size)
 
 
@@ -286,6 +300,16 @@ def group(files: dict[str, int], kind: ModelKind | None, tags: list[str]) -> lis
     for d in drafts:
         d.note = " ".join(d.notes) or None
     return drafts
+
+
+def encoder_bytes(files: dict[str, int], chosen: list[str]) -> int:
+    """Bytes of the large text encoders among ``chosen`` files of a diffusers pipeline (``files``: path → size)."""
+    per_component: dict[str, int] = {}
+    for p in chosen:
+        comp, _, rel = p.partition("/")
+        if comp.startswith("text_encoder") and rel and _weight_variant(rel)[0] and not rel.endswith(".json"):
+            per_component[comp] = per_component.get(comp, 0) + files.get(p, 0)
+    return sum(size for size in per_component.values() if size >= ENCODER_MIN_BYTES)
 
 
 def companion_files(base: dict[str, int], d: Draft) -> tuple[list[str], str | None]:

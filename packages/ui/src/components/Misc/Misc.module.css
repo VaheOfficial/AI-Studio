@@ -19,13 +19,16 @@
 .skeleton {
   display: block;
   border-radius: var(--radius-sm);
-  background: linear-gradient(90deg, var(--bg-3) 25%, var(--bg-4) 50%, var(--bg-3) 75%);
+  background: linear-gradient(90deg, var(--bg-3) 25%, color-mix(in srgb, var(--accent) 16%, var(--bg-4)) 50%, var(--bg-3) 75%);
   background-size: 200% 100%;
-  animation: ui-shimmer 1.6s linear infinite;
+  animation: global(ui-shimmer) 1.6s linear infinite;
 }
 
 .empty {
   --tint: var(--accent);
+  /* Its own stacking context: the glow and the backdrop sit behind the content with a negative z-index, and
+     without this they would fall behind the page's background once an entrance animation ends */
+  isolation: isolate;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -41,12 +44,72 @@
   place-items: center;
   width: 56px;
   height: 56px;
-  margin-bottom: 8px;
+  margin: 26px 0 30px;
   border-radius: var(--radius-xl);
   background: color-mix(in srgb, var(--tint) 10%, var(--bg-2));
   border: 1px solid color-mix(in srgb, var(--tint) 22%, transparent);
   color: var(--tint);
   box-shadow: 0 0 40px -8px color-mix(in srgb, var(--tint) 50%, transparent);
+}
+
+/* The glow behind the tile breathes */
+.emptyIcon::before {
+  content: '';
+  position: absolute;
+  inset: -22px;
+  z-index: -1;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--tint) 30%, transparent), transparent 68%);
+  animation: global(ui-breathe) 3.4s ease-in-out infinite;
+}
+
+/* Two rings around the tile, turning in opposite directions; each carries a pad */
+.emptyOrbit {
+  position: absolute;
+  inset: -17px;
+  border-radius: 50%;
+  border: 1px dashed color-mix(in srgb, var(--tint) 34%, transparent);
+  animation: global(ui-spin) 16s linear infinite;
+  pointer-events: none;
+}
+
+.emptyOrbit::before {
+  content: '';
+  position: absolute;
+  top: -4px;
+  left: 50%;
+  width: 7px;
+  height: 7px;
+  margin-left: -3.5px;
+  border-radius: 50%;
+  background: var(--bg-1);
+  border: 1.5px solid var(--tint);
+  box-shadow: 0 0 10px var(--tint);
+}
+
+.emptyOrbitOuter {
+  inset: -30px;
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--tint) 12%, transparent);
+  animation-duration: 26s;
+  animation-direction: reverse;
+}
+
+.emptyOrbitOuter::before {
+  top: auto;
+  bottom: -3px;
+  width: 5px;
+  height: 5px;
+  margin-left: -2.5px;
+  background: var(--tint);
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .emptyIcon::before,
+  .emptyOrbit {
+    animation: none;
+  }
 }
 
 .emptyIcon svg {
@@ -88,4 +151,95 @@
 
 .divider:empty::after {
   display: none;
+}
+
+/* The hero of an empty page */
+.emptyLg {
+  position: relative;
+  min-height: min(560px, 100%);
+  padding: var(--space-16) var(--space-8);
+  gap: 10px;
+}
+
+.emptyLg .emptyIcon {
+  width: 72px;
+  height: 72px;
+  margin: 34px 0 38px;
+  border-radius: var(--radius-2xl);
+}
+
+.emptyLg .emptyIcon svg {
+  width: 30px;
+  height: 30px;
+}
+
+.emptyLg .emptyTitle {
+  font-size: var(--text-2xl);
+  letter-spacing: -0.03em;
+}
+
+.emptyLg .emptyDesc {
+  max-width: 460px;
+  font-size: var(--text-lg);
+  line-height: 1.55;
+}
+
+/* The circuit is drawn in the tint */
+.emptyBackdrop {
+  z-index: -1;
+  color: var(--tint);
+  opacity: 0.8;
+}
+
+.emptyExtra {
+  position: relative;
+  width: 100%;
+  margin-top: 22px;
+}
+
+.suggestions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px;
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+.suggestion {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-glass);
+  color: var(--text-2);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    transform var(--dur-base) var(--ease-out),
+    border-color var(--dur-base),
+    color var(--dur-fast),
+    box-shadow var(--dur-slow) var(--ease-out);
+}
+
+.suggestion:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--tint, var(--accent)) 45%, var(--border));
+  color: var(--text-1);
+  box-shadow: 0 16px 34px -22px var(--tint, var(--accent));
+}
+
+.suggestionIcon {
+  display: inline-flex;
+  margin-top: 1px;
+  color: var(--tint, var(--accent));
+}
+
+.suggestionIcon svg {
+  width: 15px;
+  height: 15px;
 }

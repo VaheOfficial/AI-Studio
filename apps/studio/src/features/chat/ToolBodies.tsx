@@ -258,5 +258,18 @@ export function ApprovalPreview({ call }: { call: ToolCall }) {
       </div>
     )
   }
+  if (call.name.startsWith('automation_') && typeof a.check === 'string') {
+    // A trigger's check: code that will keep running unattended, shown in full before it is allowed
+    return (
+      <div className={s.bodyBlock}>
+        <div className={s.fileHead}>
+          <FileText size={13} />
+          <span className={s.mono}>check.py</span>
+          <span className={s.meta}>{a.check.split('\n').length} lines</span>
+        </div>
+        <pre className={s.pre}>{a.check}</pre>
+      </div>
+    )
+  }
   return null
 }

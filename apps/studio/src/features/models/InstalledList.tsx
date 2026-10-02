@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { AnimatePresence, motion } from 'motion/react'
-import { ArrowUpRight, Boxes, FolderOpen, MoreHorizontal, Play, Power, Trash2 } from 'lucide-react'
+import { ArrowUpRight, Boxes, Check, FolderOpen, MoreHorizontal, Play, Power, Trash2 } from 'lucide-react'
 import { Badge, Button, ConfirmDialog, EmptyState, IconButton, Menu, Skeleton, StatusDot, Tooltip } from '@studio/ui'
-import { useDeleteModel, useModelPower } from '../../api/hooks'
+import { useDeleteModel, useModelPower, useSetTextEncoder } from '../../api/hooks'
 import { useLive } from '../../api/live'
-import type { InstalledModel, ModelKind } from '../../api/types'
+import type { InstalledModel, ModelKind, TextEncoderMode } from '../../api/types'
 import { formatBytes, timeAgo } from '../../lib/format'
 import { KINDS, KIND_ORDER } from '../../lib/kinds'
 import { FORMAT_LABEL } from './hubMeta'
@@ -19,7 +19,7 @@ export function InstalledList({ kind, onBrowse }: { kind: ModelKind | 'all'; onB
 
   if (!synced) {
     return (
-      <div className={s.list}>
+      <div className={`${s.list} ui-stagger`}>
         {Array.from({ length: 4 }, (_, i) => (
           <Skeleton key={i} height={62} radius={12} />
         ))}
@@ -55,7 +55,7 @@ export function InstalledList({ kind, onBrowse }: { kind: ModelKind | 'all'; onB
               {KINDS[g.kind].plural}
               <span className={s.groupCount}>{g.items.length}</span>
             </h3>
-            <div className={s.list}>
+            <div className={`${s.list} ui-stagger`}>
               <AnimatePresence initial={false}>
                 {g.items.map((m) => (
                   <ModelRow key={m.id} model={m} onDelete={() => setToDelete(m)} />
@@ -82,11 +82,20 @@ export function InstalledList({ kind, onBrowse }: { kind: ModelKind | 'all'; onB
   )
 }
 
+const ENCODER_CHOICES: { mode: TextEncoderMode; label: string }[] = [
+  { mode: 'full', label: 'Full precision' },
+  { mode: '8bit', label: '8-bit (about half the memory)' },
+  { mode: '4bit', label: '4-bit (about a third)' },
+]
+
 function ModelRow({ model, onDelete }: { model: InstalledModel; onDelete: () => void }) {
   const meta = KINDS[model.kind]
   const runtimeName = useLive((st) => st.runtimes.find((r) => r.id === model.runtime)?.name ?? model.runtime)
   const power = useModelPower()
+  const setEncoder = useSetTextEncoder()
   const navigate = useNavigate()
+  // Local image pipelines: the text encoder's precision can be changed without installing anything again
+  const encoder = model.kind === 'image' && model.runtime === 'diffusers' ? (model.text_encoder ?? 'full') : undefined
   const loaded = model.status === 'loaded'
   const busy = model.status === 'loading' || power.isPending
   // Pinned OpenRouter models run in the cloud: nothing on disk, nothing to load
@@ -115,6 +124,7 @@ function ModelRow({ model, onDelete }: { model: InstalledModel; onDelete: () => 
               {model.quant && ` · ${model.quant}`}
             </Badge>
           )}
+          {encoder && encoder !== 'full' && <Badge size="sm">Text encoder {encoder === '8bit' ? '8-bit' : '4-bit'}</Badge>}
         </div>
         <span className={s.meta}>
           {cloud ? `Cloud · pinned ${timeAgo(model.installed_at)}` : `${formatBytes(model.size_bytes)} · installed ${timeAgo(model.installed_at)}`}
@@ -152,6 +162,17 @@ function ModelRow({ model, onDelete }: { model: InstalledModel; onDelete: () => 
           trigger={<IconButton label="More" icon={<MoreHorizontal />} tooltip={false} />}
           items={[
             { label: 'Copy path', icon: <FolderOpen />, onSelect: () => void navigator.clipboard.writeText(model.path) },
+            ...(encoder
+              ? [
+                  'separator' as const,
+                  { heading: 'Text encoder in memory' },
+                  ...ENCODER_CHOICES.map((c) => ({
+                    label: c.label,
+                    icon: c.mode === encoder ? <Check /> : <span />,
+                    onSelect: () => c.mode !== encoder && setEncoder.mutate({ id: model.id, text_encoder: c.mode }),
+                  })),
+                ]
+              : []),
             'separator',
             { label: cloud ? 'Unpin' : 'Delete from disk', icon: <Trash2 />, danger: true, onSelect: onDelete },
           ]}

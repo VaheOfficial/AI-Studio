@@ -19,7 +19,7 @@ export const KINDS: Record<ModelKind, KindMeta> = {
     plural: 'Language models',
     icon: <MessageSquareText />,
     hue: 'var(--hue-text)',
-    aurora: ['#7c3aed', '#4f46e5', '#a78bfa'],
+    aurora: ['#e11d48', '#b91c1c', '#fb344f'],
     route: '/chat',
   },
   image: {
@@ -59,7 +59,7 @@ export const KINDS: Record<ModelKind, KindMeta> = {
     plural: 'Video models',
     icon: <Clapperboard />,
     hue: 'var(--hue-video)',
-    aurora: ['#ef4444', '#f97316', '#e11d48'],
+    aurora: ['#8b5cf6', '#6366f1', '#a78bfa'],
     route: '/video',
   },
 }

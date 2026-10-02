@@ -11,7 +11,7 @@ from ..jobs import JobContext, JobError, jobs
 from ..models import ModelError, models
 from ..runtimes import RUNTIMES
 from ..runtimes import envs
-from ..schemas import InstalledModel, Job, ModelSource, RuntimeId
+from ..schemas import InstalledModel, Job, ModelSource, RuntimeId, TextEncoderMode
 from ..schemas_hub import HubInstallRequest, HubRepo, HubVariant
 from . import huggingface, ollama_library, variants
 
@@ -88,18 +88,19 @@ def install(req: HubInstallRequest) -> Job:
         setup = envs.ensure_env_job(env, runtime) if env else None
     model_id = _unique_id(variants.slug(f"{repo.name}-{v.quant}" if v.quant else repo.name))
     name = f"{repo.name} {v.quant}" if v.quant else repo.name
-    return jobs.submit("download", f"Install {name}", lambda ctx: _run(ctx, repo, v, runtime, model_id, name, setup),
-                       ref=v.ref)
+    encoder = req.text_encoder if v.encoder_fits and runtime == "diffusers" and req.text_encoder != "full" else None
+    return jobs.submit("download", f"Install {name}",
+                       lambda ctx: _run(ctx, repo, v, runtime, model_id, name, setup, encoder), ref=v.ref)
 
 
 def _run(ctx: JobContext, repo: HubRepo, v: HubVariant, runtime: RuntimeId, model_id: str, name: str,
-         setup: Job | None) -> None:
+         setup: Job | None, encoder: TextEncoderMode | None = None) -> None:
     token = settings.load().hf_token
     _check_access(repo.id, token)
     if v.companions and v.companions.repo != repo.id:
         _check_access(v.companions.repo, token)
     common = dict(id=model_id, catalog_id=model_id, name=name, kind=v.kind, runtime=runtime, source_repo=repo.id,
-                  format=v.format, quant=v.quant, installed_at=db.now_iso(), status="ready")
+                  format=v.format, quant=v.quant, installed_at=db.now_iso(), status="ready", text_encoder=encoder)
     if runtime == "ollama" and v.format == "gguf":
         tag = f"hf.co/{repo.id}:{v.quant or v.label}"  # Ollama pulls GGUFs straight from Hugging Face
         size = models.pull_ollama(ctx, tag)

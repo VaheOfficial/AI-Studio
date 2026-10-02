@@ -1,6 +1,6 @@
 {
   "name": "@studio/ui",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "main": "./src/index.ts",
@@ -30,18 +30,18 @@
     "@codemirror/language": "^6.12.4",
     "@codemirror/state": "^6.7.6",
     "@codemirror/view": "^6.43.13",
-    "@lezer/highlight": "^1.2.4",
+    "@lezer/highlight": "^1.2.5",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
-    "lucide-react": "^0.540.0",
-    "motion": "^12.23.0",
-    "radix-ui": "^1.4.3"
+    "lucide-react": "^1.49.0",
+    "motion": "^13.4.6",
+    "radix-ui": "^1.6.7"
   },
   "devDependencies": {
-    "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.7",
-    "typescript": "~6.0.2"
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "typescript": "~7.0.2"
   }
 }

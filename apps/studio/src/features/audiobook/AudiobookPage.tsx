@@ -43,7 +43,7 @@ import {
 import type { AudiobookBitrate, AudiobookProject, AudiobookSettings } from '../../api/contracts/dub'
 import { useCancelJob, useModelsOfKind } from '../../api/hooks'
 import { useVoiceProfiles } from '../../api/voice'
-import { StudioLayout } from '../../components/Page'
+import { PageHeader, StudioLayout } from '../../components/Page'
 import { formatBytes, timeAgo } from '../../lib/format'
 import { fmtDuration } from '../dub/format'
 import { RuntimeGate } from '../dub/RuntimeGate'
@@ -94,38 +94,39 @@ function Library({ onOpen }: { onOpen: (id: string) => void }) {
   const [confirm, setConfirm] = useState<string | null>(null)
   return (
     <div className={s.library}>
-      <header className={s.header}>
-        <span className={s.headerIcon}>
-          <BookHeadphones />
-        </span>
-        <div className={s.headerText}>
-          <h1>Audiobooks</h1>
-          <p>Chapters, a cast of voices, loudness mastering — out comes an M4B with chapter marks.</p>
-        </div>
-        <Button variant="secondary" iconLeft={<FileUp />} loading={importFile.isPending} onClick={() => fileInput.current?.click()}>
-          Import TXT / MD / EPUB / PDF
-        </Button>
-        <Button variant="glow" iconLeft={<Plus />} loading={create.isPending} onClick={() => create.mutate({ name: 'Untitled audiobook', script: '' }, { onSuccess: (p) => onOpen(p.id) })}>
-          New audiobook
-        </Button>
-        <input
-          ref={fileInput}
-          type="file"
-          hidden
-          accept=".txt,.md,.markdown,.epub,.pdf"
-          onChange={(e) => {
-            const f = e.target.files?.[0]
-            e.target.value = ''
-            if (!f) return
-            importFile.mutate(f, {
-              onSuccess: (res) => create.mutate({ name: res.title ?? f.name, script: res.script }, { onSuccess: (p) => onOpen(p.id) }),
-            })
-          }}
-        />
-      </header>
+      <PageHeader
+        hue="var(--hue-voice)"
+        icon={<BookHeadphones />}
+        title="Audiobooks"
+        subtitle="Chapters, a cast of voices, loudness mastering — out comes an M4B with chapter marks."
+        actions={
+          <>
+            <Button variant="secondary" iconLeft={<FileUp />} loading={importFile.isPending} onClick={() => fileInput.current?.click()}>
+              Import TXT / MD / EPUB / PDF
+            </Button>
+            <Button variant="glow" iconLeft={<Plus />} loading={create.isPending} onClick={() => create.mutate({ name: 'Untitled audiobook', script: '' }, { onSuccess: (p) => onOpen(p.id) })}>
+              New audiobook
+            </Button>
+          </>
+        }
+      />
+      <input
+        ref={fileInput}
+        type="file"
+        hidden
+        accept=".txt,.md,.markdown,.epub,.pdf"
+        onChange={(e) => {
+          const f = e.target.files?.[0]
+          e.target.value = ''
+          if (!f) return
+          importFile.mutate(f, {
+            onSuccess: (res) => create.mutate({ name: res.title ?? f.name, script: res.script }, { onSuccess: (p) => onOpen(p.id) }),
+          })
+        }}
+      />
       <RuntimeGate needsEnv={false} />
       {isLoading ? (
-        <div className={s.grid}>
+        <div className={`${s.grid} ui-stagger`}>
           {[0, 1, 2].map((i) => (
             <Skeleton key={i} height={96} radius={14} />
           ))}
@@ -133,10 +134,10 @@ function Library({ onOpen }: { onOpen: (id: string) => void }) {
       ) : !books?.length ? (
         <EmptyState tint="var(--hue-voice)" icon={<BookOpen />} title="No audiobooks yet" description="Start from scratch or import a manuscript." />
       ) : (
-        <div className={s.grid}>
+        <div className={`${s.grid} ui-stagger`}>
           {books.map((b, i) => (
             <motion.div key={b.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(i * 0.03, 0.3) }}>
-              <Card padding="md" interactive className={s.bookCard} onClick={() => onOpen(b.id)}>
+              <Card padding="md" interactive spotlight tilt tint="var(--hue-voice)" className={s.bookCard} onClick={() => onOpen(b.id)}>
                 <BookOpen className={s.bookIcon} />
                 <div className={s.bookText}>
                   <strong>{b.name}</strong>

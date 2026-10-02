@@ -16,7 +16,7 @@ export function RuntimesPanel() {
   const synced = useLive((st) => st.synced)
   if (!synced) {
     return (
-      <div className={s.grid}>
+      <div className={`${s.grid} ui-stagger`}>
         {Array.from({ length: 6 }, (_, i) => (
           <Skeleton key={i} height={150} radius={16} />
         ))}
@@ -39,7 +39,7 @@ export function RuntimesPanel() {
           Each runtime is an isolated Python environment with its own GPU worker process, so model families with conflicting
           dependencies never break each other. They're created on first use; you can also set them up ahead of time.
         </p>
-        <div className={s.grid}>
+        <div className={`${s.grid} ui-stagger`}>
           {runtimes
             .filter((r) => !TEXT_ENGINES.has(r.id))
             .map((r) => (

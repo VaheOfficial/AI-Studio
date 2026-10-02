@@ -16,6 +16,7 @@ import type {
   Memory,
   MessageRef,
   ModelKind,
+  ModelPatch,
   MusicRequest,
   Output,
   OutputKind,
@@ -98,6 +99,16 @@ export function useModelPower() {
       api.post<InstalledModel>(`/models/${encodeURIComponent(id)}/${action}`),
     onSuccess: (m) => useLive.getState().upsertModel(m),
     onError: onError('Model action failed'),
+  })
+}
+
+/** How an installed image model holds its text encoder; a loaded model is unloaded, the change applies at its next load. */
+export function useSetTextEncoder() {
+  return useMutation({
+    mutationFn: ({ id, text_encoder }: { id: string } & Required<ModelPatch>) =>
+      api.patch<InstalledModel>(`/models/${encodeURIComponent(id)}`, { text_encoder }),
+    onSuccess: (m) => useLive.getState().upsertModel(m),
+    onError: onError('Could not change the text encoder'),
   })
 }
 

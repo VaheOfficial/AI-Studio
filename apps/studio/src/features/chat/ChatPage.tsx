@@ -2,8 +2,8 @@ import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRe
 import { useLocation, useNavigate, useParams } from 'react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, motion } from 'motion/react'
-import { Globe, ListChecks, MessageSquareText, PanelRightOpen, SquareTerminal, Sparkles, Wrench } from 'lucide-react'
-import { Aurora, ConfirmDialog, IconButton, Lightbox, ResizablePanels, Skeleton, toast } from '@studio/ui'
+import { ArrowDown, Globe, ListChecks, PanelRightOpen, SquareTerminal, Wrench } from 'lucide-react'
+import { Aurora, CircuitField, ConfirmDialog, IconButton, Lightbox, Logo, ResizablePanels, Skeleton, toast } from '@studio/ui'
 import { api, ApiError } from '../../api/client'
 import type { ToolDisplay } from '../../api/contracts/workspace'
 import {
@@ -20,7 +20,7 @@ import { qk } from '../../api/keys'
 import { agent, useLive } from '../../api/live'
 import type { AgentMessage, AgentMode } from '../../api/types'
 import { useSetRoot } from '../../api/workspace'
-import { formatTokens, tokensPerSecond } from '../../lib/format'
+import { formatTokens, formatUsage, tokensPerSecond } from '../../lib/format'
 import { formatUsd } from '../../lib/money'
 import { parseTokens } from './commands'
 import { Composer } from './Composer'
@@ -47,6 +47,9 @@ const SUGGESTIONS = [
 ]
 
 type Diff = Extract<ToolDisplay, { kind: 'diff' }>
+
+/** How far above the end of the thread (px) the way back to it is offered. */
+const AWAY_GAP = 160
 
 /**
  * Upload attachments: pictures go with the message (the model sees them), other files into the chat's workspace
@@ -110,6 +113,17 @@ export default function ChatPage() {
   const sessionSpeed = tokensPerSecond(
     items.reduce((sum, it) => sum + (it.message.output_tokens ?? 0), 0),
     items.reduce((sum, it) => sum + (it.message.generation_s ?? 0), 0),
+  )
+  const sessionUsage = formatUsage(
+    items.reduce(
+      (sum, it) => ({
+        requests: sum.requests + (it.message.usage?.requests ?? 0),
+        input_tokens: sum.input_tokens + (it.message.usage?.input_tokens ?? 0),
+        cached_tokens: sum.cached_tokens + (it.message.usage?.cached_tokens ?? 0),
+        output_tokens: sum.output_tokens + (it.message.usage?.output_tokens ?? 0),
+      }),
+      { requests: 0, input_tokens: 0, cached_tokens: 0, output_tokens: 0 },
+    ),
   )
   const diffs = useMemo(
     () => items.flatMap((it) => (it.message.tool_calls ?? []).flatMap((c) => (c.display?.kind === 'diff' ? [c.display as Diff] : []))),
@@ -268,26 +282,63 @@ export default function ChatPage() {
   }, [handoff, model, navigate, location.pathname])
 
   // Follow the end of the thread — through streaming, late-loading media and the thread mounting after the
-  // hero's exit — until the user scrolls up; opening a chat starts at its end.
+  // hero's exit — for as long as the user stays there. Any move up lets go at once, however small: the thread then
+  // stays where they put it while the reply grows below. Coming back to the end (by scrolling, or the button) takes
+  // hold again. Opening a chat and sending a message start at the end.
   const scroller = useRef<HTMLDivElement>(null)
   const stick = useRef(true)
+  const lastTop = useRef(0)
+  // The user is reading further up: offer the way back. Remembered with the chat it is about, so another chat
+  // starts without it.
+  const [awayIn, setAwayIn] = useState<string>()
+  const away = !!sessionId && awayIn === sessionId
+  const setAway = (on: boolean) => setAwayIn(on ? sessionId : undefined)
+  const release = () => {
+    stick.current = false
+  }
   const toEnd = () => {
     const el = scroller.current
-    if (el && stick.current) el.scrollTop = el.scrollHeight
+    if (!el || !stick.current) return
+    // Higher than where it was left, and not at the end: the user moved up and the scroll event that says so is
+    // still on its way (a reply streams faster than events arrive). Let go rather than pull the thread back.
+    if (el.scrollTop < lastTop.current - 0.5 && el.scrollHeight - el.scrollTop - el.clientHeight >= 4) return release()
+    el.scrollTop = el.scrollHeight
+    lastTop.current = el.scrollTop
   }
+  const follow = () => {
+    stick.current = true
+    setAway(false)
+    const el = scroller.current
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+  }
+  const sentId = turn?.user_message.id
   useLayoutEffect(() => {
     stick.current = true
-  }, [sessionId])
+    lastTop.current = 0
+  }, [sessionId, sentId])
   useLayoutEffect(toEnd, [items])
-  const followThread = useCallback((node: HTMLDivElement | null) => {
-    if (!node) return
-    toEnd()
-    const ro = new ResizeObserver(toEnd)
-    ro.observe(node)
-    return () => ro.disconnect()
-  }, [])
+  const followThread = useCallback(
+    (node: HTMLDivElement | null) => {
+      if (!node) return
+      // The thread grew (or shrank): keep to its end, or, when the user is further up, see how far behind they are
+      const grown = () => {
+        toEnd()
+        const el = scroller.current
+        if (el) setAwayIn(!stick.current && el.scrollHeight - el.scrollTop - el.clientHeight > AWAY_GAP ? sessionId : undefined)
+      }
+      grown()
+      const ro = new ResizeObserver(grown)
+      ro.observe(node)
+      return () => ro.disconnect()
+    },
+    [sessionId], // eslint-disable-line react-hooks/exhaustive-deps -- toEnd only reads refs
+  )
 
   const empty = !sessionId || (!isLoading && items.length === 0)
+  const clock = useMemo(
+    () => (turn ? { startedAt: turn.startedAt, waitedMs: turn.waitedMs, waitingSince: turn.waitingSince } : undefined),
+    [turn?.startedAt, turn?.waitedMs, turn?.waitingSince], // eslint-disable-line react-hooks/exhaustive-deps
+  )
   const approve = (callId: string, ok: boolean) => sessionId && agent.approve(sessionId, callId, ok)
   const answer = (callId: string, text: string) => sessionId && agent.answer(sessionId, callId, text)
 
@@ -338,15 +389,24 @@ export default function ChatPage() {
       <div
         ref={scroller}
         className={s.scroll}
+        onWheel={(e) => {
+          // Let go before the scroll itself happens, so nothing pulls the thread back under the wheel
+          if (e.deltaY < 0 && e.currentTarget.scrollTop > 0) release()
+        }}
         onScroll={(e) => {
           const el = e.currentTarget
-          stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+          const gap = el.scrollHeight - el.scrollTop - el.clientHeight
+          if (gap < 4) stick.current = true
+          else if (el.scrollTop < lastTop.current - 0.5) release() // moved up: by wheel, keys, touch or the scrollbar
+          lastTop.current = el.scrollTop
+          setAway(!stick.current && gap > AWAY_GAP)
         }}
       >
         <AnimatePresence mode="wait">
           {empty ? (
             <motion.div key="hero" className={s.hero} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }}>
-              <Aurora colors={['#7c3aed', '#4338ca', '#0891b2']} intensity={0.7} className={s.heroAurora} />
+              <Aurora colors={['#e11d48', '#7f1d1d', '#9f1239']} intensity={0.7} className={s.heroAurora} />
+              <CircuitField density={3.2} />
               <motion.div
                 className={s.heroInner}
                 initial={{ opacity: 0, y: 14 }}
@@ -354,7 +414,7 @@ export default function ChatPage() {
                 transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
               >
                 <div className={s.heroIcon}>
-                  <Sparkles />
+                  <Logo size={112} mode="assemble" glow />
                 </div>
                 <h1 className={s.heroTitle}>What should we build?</h1>
                 <p className={s.heroSub}>
@@ -395,6 +455,8 @@ export default function ChatPage() {
                     message={it.message}
                     streaming={it.live && streaming && it.message.role === 'assistant'}
                     appear={it.live}
+                    clock={it.live && it.message.role === 'assistant' ? clock : undefined}
+                    draft={it.live && it.message.role === 'assistant' ? turn?.draft : undefined}
                     onApprove={approve}
                     onAnswer={it.live ? answer : undefined}
                     onRewind={it.live || streaming ? undefined : onRewind}
@@ -408,6 +470,22 @@ export default function ChatPage() {
       </div>
 
       <div className={s.composerWrap}>
+        <AnimatePresence>
+          {away && !empty && (
+            <motion.button
+              className={s.toEnd}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 8 }}
+              transition={{ duration: 0.18 }}
+              onClick={follow}
+              aria-label="Go to the latest message"
+            >
+              <ArrowDown size={14} />
+              {streaming ? 'Follow the reply' : 'Latest'}
+            </motion.button>
+          )}
+        </AnimatePresence>
         <Composer
           models={chatModels ?? []}
           model={model}
@@ -438,10 +516,14 @@ export default function ChatPage() {
         />
         <ChatLightbox />
         <p className={s.disclaimer}>
-          <MessageSquareText size={11} /> Runs locally unless you pick a cloud provider. Risky tool calls always ask first.
           {sessionSpeed && (
             <span className={s.sessionCost} title="Average generation speed of this chat's replies">
               Avg {sessionSpeed}
+            </span>
+          )}
+          {sessionUsage && (
+            <span className={s.sessionCost} title="Tokens this chat has used over all model requests">
+              {sessionUsage}
             </span>
           )}
           {sessionCost > 0 && <span className={s.sessionCost}>This chat: {formatUsd(sessionCost)} on OpenRouter</span>}

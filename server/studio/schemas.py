@@ -57,6 +57,11 @@ class CatalogEntry(BaseModel):
 InstalledStatus = Literal["ready", "loading", "loaded", "error"]
 
 
+# How an image model's large text encoders are held in memory: as shipped (bf16), or quantized when the model is
+# loaded (bitsandbytes 8-bit / 4-bit NF4). The denoiser's own precision is the variant that was installed.
+TextEncoderMode = Literal["full", "8bit", "4bit"]
+
+
 class InstalledModel(BaseModel):
     id: str
     catalog_id: str
@@ -72,6 +77,13 @@ class InstalledModel(BaseModel):
     installed_at: str
     status: InstalledStatus
     error: str | None = None
+    text_encoder: TextEncoderMode | None = None  # local image pipelines; None = full precision
+
+
+class ModelPatch(BaseModel):
+    """``PATCH /api/models/{id}``: change how an installed model is loaded."""
+
+    text_encoder: TextEncoderMode | None = None
 
 
 JobKind = Literal["download", "env", "generate", "storage"]
@@ -169,6 +181,9 @@ class RuntimeInfo(BaseModel):
 
 
 OffloadPolicy = Literal["auto", "gpu", "cpu-offload", "sequential-offload"]
+# When the agent gets a completion check after a tool-using turn: for models running on this machine (small ones
+# tend to stop early), for every model, or never (each check is one more full-size request)
+CompletionCheck = Literal["local", "always", "never"]
 LocalBackendId = Literal["lmstudio", "llamacpp", "ollama"]
 
 
@@ -194,6 +209,7 @@ class Settings(BaseModel):
     # local model. May name a pinned cloud model: the user chose to pay for it.
     default_models: dict[DefaultTask, str] = Field(default_factory=dict)
     agent_auto_approve: list[str] = Field(default_factory=list)
+    agent_completion_check: CompletionCheck = "local"
     offload_policy: OffloadPolicy = "auto"
     default_local_backend: LocalBackendId = "llamacpp"
     # 96K: the largest window that keeps a ~18 GB model entirely on a 24 GB GPU (8-bit KV cache, vision on the CPU)
@@ -221,6 +237,7 @@ class SettingsUpdate(BaseModel):
     default_chat_model: str | None = None
     default_models: dict[DefaultTask, str] | None = None  # replaces the whole map
     agent_auto_approve: list[str] | None = None
+    agent_completion_check: CompletionCheck | None = None
     offload_policy: OffloadPolicy | None = None
     default_local_backend: LocalBackendId | None = None
     llamacpp_ctx_size: int | None = Field(None, ge=2048, le=262144)
@@ -304,6 +321,18 @@ class ThinkingPart(BaseModel):
     text: str
 
 
+class TokenUsage(BaseModel):
+    """What an assistant reply used, summed over the model requests of its turn. Each request re-reads the whole
+    conversation so far (the API keeps no state), so a turn of N tool steps sends the context N times:
+    ``input_tokens`` is that sum, not the size of the conversation. ``cached_tokens`` is the part of it the provider
+    served from its prompt cache, which is billed at a fraction of the price."""
+
+    requests: int = 0
+    input_tokens: int = 0
+    cached_tokens: int = 0
+    output_tokens: int = 0
+
+
 class AgentMessage(BaseModel):
     id: str
     role: Literal["user", "assistant"]
@@ -318,6 +347,11 @@ class AgentMessage(BaseModel):
     # steps, and the seconds spent generating them (prompt reading excluded)
     output_tokens: int | None = None
     generation_s: float | None = None
+    usage: TokenUsage | None = None
+    # How long the turn that produced an assistant reply took, in seconds: model requests, reading prompts and
+    # running tools, without the time it waited for the user (an approval, a question). Set when the turn ends; in an
+    # ActiveTurn snapshot it is the time worked so far.
+    elapsed_s: float | None = None
 
 
 class ContextUsage(BaseModel):
@@ -413,6 +447,15 @@ class EvToolCall(BaseModel):
     call: ToolCall
 
 
+class EvToolDraft(BaseModel):
+    """The model is writing a tool call (``chars`` of arguments so far); the call follows as ``tool.call`` when
+    its step ends. Not part of the saved message."""
+
+    type: Literal["tool.draft"] = "tool.draft"
+    name: str
+    chars: int
+
+
 class EvToolApproval(BaseModel):
     type: Literal["tool.approval"] = "tool.approval"
     call_id: str
@@ -463,6 +506,13 @@ class EvSpeed(BaseModel):
     generation_s: float
 
 
+class EvTokens(BaseModel):
+    """After a model step: the reply's token totals so far."""
+
+    type: Literal["tokens"] = "tokens"
+    usage: TokenUsage
+
+
 class EvContext(BaseModel):
     """Context use after a model step; ``note`` when older steps were trimmed or summarized to make room."""
 
@@ -472,8 +522,9 @@ class EvContext(BaseModel):
 
 
 AgentEvent = Annotated[
-    Union[EvTurnStart, EvMessageStart, EvTextDelta, EvThinkingDelta, EvToolCall, EvToolApproval, EvToolProgress,
-          EvToolResult, EvTitle, EvDone, EvError, EvUsage, EvSpeed, EvContext],
+    Union[EvTurnStart, EvMessageStart, EvTextDelta, EvThinkingDelta, EvToolDraft, EvToolCall, EvToolApproval,
+          EvToolProgress,
+          EvToolResult, EvTitle, EvDone, EvError, EvUsage, EvSpeed, EvTokens, EvContext],
     Field(discriminator="type"),
 ]
 

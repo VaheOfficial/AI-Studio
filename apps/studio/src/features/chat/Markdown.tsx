@@ -2,6 +2,7 @@ import { memo, useState } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Check, Copy } from 'lucide-react'
+import { cn } from '@studio/ui'
 import { useChatLightbox } from './lightbox'
 import { splitWriting } from './writing'
 import { WritingBlock } from './WritingBlock'
@@ -58,10 +59,11 @@ const renderMarkdown = (text: string) => (
   </ReactMarkdown>
 )
 
-export const Markdown = memo(function Markdown({ text }: { text: string }) {
+/** `live`: this text is being written right now; a caret sits at its end. */
+export const Markdown = memo(function Markdown({ text, live }: { text: string; live?: boolean }) {
   const segments = splitWriting(text)
   return (
-    <div className={s.md}>
+    <div className={cn(s.md, live && s.live)}>
       {segments.map((seg, i) =>
         seg.kind === 'writing' ? (
           <WritingBlock key={`w${seg.block.id}${i}`} block={seg.block} render={renderMarkdown} />

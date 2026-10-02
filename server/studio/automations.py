@@ -1,17 +1,30 @@
-"""Automations: the agent runs a prompt on a schedule (reminders, recurring summaries, condition watches).
+"""Automations: the agent runs a prompt on a schedule (reminders, recurring summaries, condition watches) or when a
+trigger fires.
 
-Each automation owns a chat; every run is an agent turn posted there, so reports keep their history and tools work
-as usual. Schedules are iCal VEVENTs (DTSTART in local time, optional RRULE; at most hourly), or a relative one-off
+Every run is an agent turn posted in the automation's chat, so reports keep their history and tools work as usual.
+That chat is the one the automation was created in when the agent set it up there (its runs continue that
+conversation; a run waits its turn while a reply is being written in it), and a chat of its own when the user asked
+for one or created it on the Automations page. Schedules are iCal VEVENTs (DTSTART in local time, optional RRULE; at most hourly), or a relative one-off
 ("in 4 hours") given as ``dateutil.relativedelta`` arguments. A condition watch reports only when its condition
 is met: the model answers ``NO_UPDATE`` otherwise, and that quiet exchange is removed from the chat. Runs missed
 while the server was off happen once on the next start. Status changes push ``automation.update``; a report, an
-error or a pending approval pushes ``automation.run`` (the UI notifies)."""
+error or a pending approval pushes ``automation.run`` (the UI notifies).
+
+A trigger has no schedule. It has a check: a Python script the server runs by itself every few minutes, with no
+model involved. Every line the script prints is an item; the lines it has printed before are remembered, and a line
+that is new wakes the agent, which is handed the new lines with the prompt. What the check finds when the trigger
+is created is the starting point and is not reported. So the model runs only when there is something to do, and a
+model that was loaded just for a run is unloaded again afterwards."""
 
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
+import os
 import re
+import shutil
+import subprocess
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
@@ -20,8 +33,12 @@ from dateutil.relativedelta import relativedelta
 from dateutil.rrule import rrulestr
 from pydantic import BaseModel
 
-from . import db, events, settings
+from . import config, db, events, settings
 from .events import bus
+from .models import ModelError, models
+from .osenv import NO_WINDOW
+from .proc import kill_tree
+from .runtimes import envs
 from .schemas import AgentSession, EvError, EvToolApproval
 from .schemas_automations import (Automation, AutomationCreate, AutomationRunStatus, AutomationTiming,
                                   AutomationUpdate, EvAutomationRemoved, EvAutomationRun, EvAutomationUpdate)
@@ -33,7 +50,19 @@ if TYPE_CHECKING:
 QUIET = "NO_UPDATE"
 TICK_S = 20
 _COLUMNS = ("id", "title", "prompt", "schedule", "timing_mode", "enabled", "model", "session_id", "next_run",
-            "last_run", "last_status", "last_result", "created_at")
+            "last_run", "last_status", "last_result", "created_at", "check_code", "check_minutes", "last_check",
+            "check_error")
+# Triggers: the check runs in the environment of the agent's run_python (requests and the usual libraries)
+CHECK_ENV = "python"
+CHECKS_DIR = config.DATA_DIR / "automations"  # one folder per trigger: its check.py, and whatever the script keeps
+CHECK_TIMEOUT_S = 60
+CHECK_MINUTES = 15  # when none is given
+BUSY_WAIT_S = 60 * 60  # how long a run waits for its chat while a reply is being written there
+MAX_ITEMS = 200  # lines one check may report
+MAX_LINE = 600
+MAX_SEEN = 5000  # remembered items per trigger
+# Models that are loaded into this machine's memory for a run and can be taken out again ("<runtime>:<model id>")
+_UNLOADABLE = ("llamacpp", "lmstudio")
 _DAYS = {"MO": "Monday", "TU": "Tuesday", "WE": "Wednesday", "TH": "Thursday", "FR": "Friday", "SA": "Saturday",
          "SU": "Sunday"}
 
@@ -166,6 +195,16 @@ def describe(vevent: str) -> str:
     return text
 
 
+def describe_check(minutes: int) -> str:
+    """A trigger's rhythm in words: "Checks every 15 minutes"."""
+    if minutes == 1:
+        return "Checks every minute"
+    if minutes % 60 == 0:
+        hours = minutes // 60
+        return "Checks every hour" if hours == 1 else f"Checks every {hours} hours"
+    return f"Checks every {minutes} minutes"
+
+
 def _utc_iso(local: datetime | None) -> str | None:
     if local is None:
         return None
@@ -180,12 +219,21 @@ def init() -> None:
         id TEXT PRIMARY KEY, title TEXT NOT NULL, prompt TEXT NOT NULL, schedule TEXT NOT NULL,
         timing_mode TEXT NOT NULL, enabled INTEGER NOT NULL, model TEXT, session_id TEXT NOT NULL, next_run TEXT,
         last_run TEXT, last_status TEXT, last_result TEXT, created_at TEXT NOT NULL)""")
+    # Triggers came later; ``seen`` is the list of item marks a trigger's check has already printed
+    have = {r["name"] for r in db.query("PRAGMA table_info(automations)")}
+    for name, sql_type in {"check_code": "TEXT", "check_minutes": "INTEGER", "last_check": "TEXT",
+                           "check_error": "TEXT", "seen": "TEXT"}.items():
+        if name not in have:
+            db.execute(f"ALTER TABLE automations ADD COLUMN {name} {sql_type}")
 
 
 def _row(r: object) -> Automation:
     data = {k: r[k] for k in _COLUMNS}  # type: ignore[index]
     data["enabled"] = bool(data["enabled"])
-    return Automation(**data, schedule_text=describe(data["schedule"]))
+    data["check"] = data.pop("check_code")
+    text = (describe_check(data["check_minutes"] or CHECK_MINUTES) if data["timing_mode"] == "trigger"
+            else describe(data["schedule"]))
+    return Automation(**data, schedule_text=text)
 
 
 def list_all() -> list[Automation]:
@@ -201,9 +249,11 @@ def get(automation_id: str) -> Automation:
 
 def _save(a: Automation) -> Automation:
     values = [a.id, a.title, a.prompt, a.schedule, a.timing_mode, int(a.enabled), a.model, a.session_id, a.next_run,
-              a.last_run, a.last_status, a.last_result, a.created_at]
-    db.execute(f"INSERT OR REPLACE INTO automations({', '.join(_COLUMNS)}) VALUES({', '.join('?' * len(_COLUMNS))})",
-               values)
+              a.last_run, a.last_status, a.last_result, a.created_at, a.check, a.check_minutes, a.last_check,
+              a.check_error]
+    # An update in place: replacing the row would drop what the trigger has seen
+    db.execute(f"INSERT INTO automations({', '.join(_COLUMNS)}) VALUES({', '.join('?' * len(_COLUMNS))}) "
+               f"ON CONFLICT(id) DO UPDATE SET {', '.join(f'{c} = excluded.{c}' for c in _COLUMNS[1:])}", values)
     saved = get(a.id)
     bus.publish(EvAutomationUpdate(automation=saved))
     return saved
@@ -228,31 +278,70 @@ def _session_for(title: str, model: str | None, origin_session_id: str | None) -
     return session.id
 
 
-def create(req: AutomationCreate, origin_session_id: str | None = None) -> Automation:
-    vevent = normalize(req.schedule, req.dtstart_offset_json, req.timing_mode)
+def _next_check(minutes: int | None) -> str | None:
+    return _utc_iso(datetime.now() + timedelta(minutes=minutes or CHECK_MINUTES))
+
+
+def create(req: AutomationCreate, origin_session_id: str | None = None, automation_id: str | None = None,
+           known: list[str] | None = None, new_chat: bool = False) -> Automation:
+    """``origin_session_id``: the chat the agent creates it in; its runs are posted there unless ``new_chat`` asks
+    for a chat of its own. ``known``: for a trigger, the items its check prints right now - where it starts from,
+    not news."""
+    title = req.title.strip()
     origin = db.get_session(origin_session_id) if origin_session_id else None
     model = req.model or (origin.model if origin else None)
-    a = Automation(id=uuid.uuid4().hex[:10], title=req.title.strip(), prompt=req.prompt.strip(), schedule=vevent,
-                   schedule_text=describe(vevent), timing_mode=req.timing_mode, enabled=True, model=model,
-                   session_id=_session_for(req.title.strip(), model, origin_session_id),
-                   next_run=_utc_iso(next_after(vevent, datetime.now())), created_at=db.now_iso())
+    if origin is not None and not new_chat:
+        session_id = origin.id
+    else:
+        session_id = _session_for(title, model, origin_session_id)
+    if req.timing_mode == "trigger":
+        if not (req.check or "").strip():
+            raise AutomationError("A trigger needs a check: a Python script that prints one line per item")
+        minutes = req.check_minutes or CHECK_MINUTES
+        vevent, text, next_run = "", describe_check(minutes), _next_check(minutes)
+        check: str | None = req.check
+    else:
+        vevent = normalize(req.schedule, req.dtstart_offset_json, req.timing_mode)
+        text, next_run, check, minutes = describe(vevent), _utc_iso(next_after(vevent, datetime.now())), None, None
+    a = Automation(id=automation_id or uuid.uuid4().hex[:10], title=title, prompt=req.prompt.strip(),
+                   schedule=vevent, schedule_text=text, timing_mode=req.timing_mode, enabled=True, model=model,
+                   session_id=session_id, next_run=next_run,
+                   created_at=db.now_iso(), check=check, check_minutes=minutes,
+                   last_check=db.now_iso() if known is not None else None)
     events.log("info", "automations", f"Created '{a.title}': {a.schedule_text}")
-    return _save(a)
+    saved = _save(a)
+    if known is not None:
+        _remember(a.id, known)
+    return saved
 
 
 def update(automation_id: str, req: AutomationUpdate) -> Automation:
     a = get(automation_id)
     changes = req.model_dump(exclude_unset=True)
     timing = changes.get("timing_mode") or a.timing_mode
-    if changes.get("schedule") or changes.get("dtstart_offset_json"):
-        changes["schedule"] = normalize(changes.get("schedule"), changes.get("dtstart_offset_json"), timing)
-    elif "timing_mode" in changes:
-        normalize(a.schedule, None, timing)  # a watch must still repeat
-    changes.pop("dtstart_offset_json", None)
-    if not changes.get("schedule"):
-        changes.pop("schedule", None)
-    updated = a.model_copy(update=changes)
-    updated.next_run = _utc_iso(next_after(updated.schedule, datetime.now())) if updated.enabled else None
+    offset = changes.pop("dtstart_offset_json", None)
+    if timing == "trigger":
+        if not (changes.get("check") or a.check or "").strip():
+            raise AutomationError("A trigger needs a check: a Python script that prints one line per item")
+        if not changes.get("check"):
+            changes.pop("check", None)
+        changes["schedule"] = ""
+        changes["check_minutes"] = changes.get("check_minutes") or a.check_minutes or CHECK_MINUTES
+        updated = a.model_copy(update=changes)
+        # Changing the rhythm (or resuming) counts from now; anything else leaves the next check where it was
+        moved = updated.check_minutes != a.check_minutes or not a.enabled or a.timing_mode != "trigger"
+        updated.next_run = (_next_check(updated.check_minutes) if moved or not a.next_run else a.next_run
+                            ) if updated.enabled else None
+    else:
+        if changes.get("schedule") or offset:
+            changes["schedule"] = normalize(changes.get("schedule"), offset, timing)
+        else:
+            changes.pop("schedule", None)
+            if "timing_mode" in changes or not a.schedule:
+                normalize(a.schedule, None, timing)  # it must have a schedule, and a watch must still repeat
+        changes.update(check=None, check_minutes=None, check_error=None)
+        updated = a.model_copy(update=changes)
+        updated.next_run = _utc_iso(next_after(updated.schedule, datetime.now())) if updated.enabled else None
     if db.get_session(updated.session_id) is None:
         updated.session_id = _session_for(updated.title, updated.model, None)
     return _save(updated)
@@ -261,17 +350,121 @@ def update(automation_id: str, req: AutomationUpdate) -> Automation:
 def delete(automation_id: str) -> Automation:
     a = get(automation_id)
     db.execute("DELETE FROM automations WHERE id = ?", (automation_id,))
+    shutil.rmtree(CHECKS_DIR / automation_id, ignore_errors=True)
     bus.publish(EvAutomationRemoved(id=automation_id))
     return a
+
+
+# ------------------------------ triggers ------------------------------
+
+
+def _mark(item: str) -> str:
+    return hashlib.sha1(item.encode("utf-8", "replace")).hexdigest()[:16]
+
+
+def _seen(automation_id: str) -> list[str]:
+    """Marks of the items this trigger's check has printed before, oldest first."""
+    r = db.query_one("SELECT seen FROM automations WHERE id = ?", (automation_id,))
+    try:
+        return list(json.loads(r["seen"])) if r and r["seen"] else []
+    except ValueError:
+        return []
+
+
+def _remember(automation_id: str, items: list[str], keep: list[str] | None = None) -> None:
+    """Record ``items`` as seen. What a check still prints moves to the young end, so a long-standing item is not
+    forgotten (and reported again) once the list is full."""
+    marks = [_mark(i) for i in items]
+    current = set(marks)
+    seen = [m for m in (_seen(automation_id) if keep is None else keep) if m not in current] + marks
+    db.execute("UPDATE automations SET seen = ? WHERE id = ?", (json.dumps(seen[-MAX_SEEN:]), automation_id))
+
+
+def _check_blocking(automation_id: str, code: str) -> list[str]:
+    if not envs.is_ready(CHECK_ENV):
+        raise AutomationError("The Python tools aren't installed yet. They install the first time the assistant runs "
+                              "Python in a chat; create the trigger after that.")
+    folder = CHECKS_DIR / automation_id
+    folder.mkdir(parents=True, exist_ok=True)
+    script = folder / "check.py"
+    script.write_text(code, encoding="utf-8")
+    proc = subprocess.Popen([str(envs.env_python(CHECK_ENV)), "-u", str(script)], cwd=folder,
+                            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                            encoding="utf-8", errors="replace", creationflags=NO_WINDOW,
+                            env={**os.environ, "PYTHONIOENCODING": "utf-8"})
+    try:
+        out, err = proc.communicate(timeout=CHECK_TIMEOUT_S)
+    except subprocess.TimeoutExpired:
+        kill_tree(proc)
+        proc.communicate()
+        raise AutomationError(f"The check ran longer than {CHECK_TIMEOUT_S} s and was stopped") from None
+    if proc.returncode != 0:
+        raise AutomationError(f"The check failed (exit code {proc.returncode}):\n{(err or out).strip()[-1500:]}")
+    items: list[str] = []
+    for line in out.splitlines():
+        item = line.strip()[:MAX_LINE]
+        if item and item not in items:
+            items.append(item)
+    return items[:MAX_ITEMS]
+
+
+async def run_check(automation_id: str, code: str) -> list[str]:
+    """Run a trigger's check: the items it prints (one per line, in order, without repeats). Raises AutomationError
+    with the script's own error when it fails or takes too long."""
+    return await asyncio.to_thread(_check_blocking, automation_id, code)
+
+
+async def create_checked(req: AutomationCreate, origin_session_id: str | None = None,
+                         new_chat: bool = False) -> tuple[Automation, list[str]]:
+    """Create an automation. A trigger's check runs first: a script that fails is refused with its error, and what
+    it prints now (returned) is where the trigger starts from."""
+    if req.timing_mode != "trigger":
+        return create(req, origin_session_id, new_chat=new_chat), []
+    if not (req.check or "").strip():
+        raise AutomationError("A trigger needs a check: a Python script that prints one line per item")
+    automation_id = uuid.uuid4().hex[:10]
+    try:
+        known = await run_check(automation_id, req.check or "")
+        return create(req, origin_session_id, automation_id, known, new_chat), known
+    except AutomationError:
+        shutil.rmtree(CHECKS_DIR / automation_id, ignore_errors=True)
+        raise
+
+
+async def update_checked(automation_id: str, req: AutomationUpdate) -> tuple[Automation, list[str] | None]:
+    """Change an automation. A new check (or becoming a trigger) is run first, and the trigger starts over from
+    what it prints: a changed script words its items differently, and they would all look new."""
+    a = get(automation_id)
+    becomes = (req.timing_mode or a.timing_mode) == "trigger"
+    code = (req.check or a.check or "") if becomes else ""
+    fresh_start = becomes and (a.timing_mode != "trigger" or code.strip() != (a.check or "").strip())
+    known = await run_check(a.id, code) if fresh_start and code.strip() else None
+    updated = update(automation_id, req)
+    if known is not None:
+        _remember(a.id, known, keep=[])
+        updated = _save(updated.model_copy(update={"last_check": db.now_iso(), "check_error": None}))
+    return updated, known
 
 
 # ------------------------------ runner ------------------------------
 
 
-def _instruction(a: Automation) -> str:
+def _instruction(a: Automation, items: list[str] | None = None) -> str:
     when = datetime.now().astimezone()
+    if items:
+        many = len(items) != 1
+        head = (f"[Trigger “{a.title}”, set up by the user, fired now ({when:%A %Y-%m-%d %H:%M %Z}): its check "
+                f"found {len(items)} new item{'s' if many else ''}. Nobody is watching, so work on your own. Write "
+                "the result for the user; the start of your reply is sent as a notification. If, after looking, "
+                f"nothing here is worth their attention, reply with exactly {QUIET} and nothing else.]")
+        listing = "\n".join(f"- {i}" for i in items)
+        return f"{head}\n\nNew item{'s' if many else ''}:\n{listing}\n\n{a.prompt}"
     head = (f"[Scheduled automation “{a.title}”, set up by the user; running now, "
             f"{when:%A %Y-%m-%d %H:%M %Z}.]")
+    if a.timing_mode == "trigger":  # run by hand: nothing new came in
+        rule = ("Its check found nothing new; the user asked for a run anyway. Do it now with what is known and "
+                "write the result for the user.")
+        return f"{head} {rule}\n\n{a.prompt}"
     if a.timing_mode == "condition_watch":
         rule = (f"This is a recurring check. If the condition isn't met or nothing meaningful changed since the last "
                 f"check (see earlier runs in this chat), reply with exactly {QUIET} and nothing else. Otherwise "
@@ -286,6 +479,8 @@ class AutomationRunner:
         self._agent: AgentService | None = None
         self._loop: asyncio.Task[None] | None = None
         self._running: set[str] = set()
+        self._checking: set[str] = set()
+        self._tasks: set[asyncio.Task[None]] = set()  # checks and runs in flight (kept so they are not collected)
 
     def start(self, agent: AgentService) -> None:
         self._agent = agent
@@ -309,26 +504,85 @@ class AutomationRunner:
     def _tick(self) -> None:
         now = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
         for a in list_all():
-            if a.enabled and a.next_run and a.next_run <= now and a.id not in self._running:
+            if not (a.enabled and a.next_run and a.next_run <= now):
+                continue
+            if a.timing_mode == "trigger":
+                if a.id not in self._checking:
+                    self._start_check(a)
+            elif a.id not in self._running:
                 self.run_now(a.id)
 
+    def _spawn(self, coro: object, name: str) -> None:
+        task = asyncio.get_running_loop().create_task(coro, name=name)  # type: ignore[arg-type]
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+
     def run_now(self, automation_id: str) -> Automation:
+        """Run it now. For a trigger that is its check: the agent is woken if the check finds something new."""
         a = get(automation_id)
-        if a.id in self._running:
-            raise AutomationError("It's already running")
         if self._agent is None:
             raise AutomationError("The agent isn't ready yet")
+        if a.timing_mode == "trigger":
+            if a.id in self._checking or a.id in self._running:
+                raise AutomationError("It's already running")
+            return self._start_check(a)
+        if a.id in self._running:
+            raise AutomationError("It's already running")
         self._running.add(a.id)
         # the next run is scheduled from now, so a long run or a restart doesn't fire it twice
         a = _save(a.model_copy(update={"next_run": _utc_iso(next_after(a.schedule, datetime.now()))}))
-        asyncio.get_running_loop().create_task(self._run(a), name=f"automation-{a.id}")
+        self._spawn(self._run(a), f"automation-{a.id}")
         return a
 
-    async def _run(self, a: Automation) -> None:
+    def _start_check(self, a: Automation) -> Automation:
+        self._checking.add(a.id)
+        a = _save(a.model_copy(update={"next_run": _next_check(a.check_minutes) if a.enabled else None}))
+        self._spawn(self._check(a), f"automation-check-{a.id}")
+        return a
+
+    async def _check(self, a: Automation) -> None:
+        """One look by a trigger's script; new items wake the agent."""
+        try:
+            error: str | None = None
+            items: list[str] = []
+            try:
+                items = await run_check(a.id, a.check or "")
+            except AutomationError as exc:
+                error = str(exc)
+            try:
+                current = get(a.id)
+            except AutomationError:
+                return  # deleted meanwhile
+            failing = current.check_error is not None
+            current = _save(current.model_copy(update={"last_check": db.now_iso(), "check_error": error}))
+            if error is not None:
+                if not failing:  # said once, not at every check
+                    events.log("warn", "automations", f"The check of '{a.title}' failed: {error}")
+                    reason = error.strip().splitlines()[-1]  # of a traceback, the line that says what
+                    bus.publish(EvAutomationRun(automation_id=a.id, title=a.title, status="error",
+                                                message=f"Its check failed: {reason}"[:300],
+                                                session_id=current.session_id))
+                return
+            seen = _seen(a.id)
+            known = set(seen)
+            fresh = [i for i in items if _mark(i) not in known]
+            if fresh and a.id in self._running:
+                return  # still working on the last ones: these stay new until the next check
+            _remember(a.id, items, keep=seen)
+            if fresh:
+                events.log("info", "automations", f"'{a.title}' fired: {len(fresh)} new item(s)")
+                self._running.add(a.id)
+                self._spawn(self._run(current, fresh), f"automation-{a.id}")
+        except Exception as exc:  # noqa: BLE001 - one bad check must not end the scheduler's task quietly
+            events.log("error", "automations", f"Checking '{a.title}' failed: {exc}")
+        finally:
+            self._checking.discard(a.id)
+
+    async def _run(self, a: Automation, items: list[str] | None = None) -> None:
         status: AutomationRunStatus = "error"
         message = ""
         try:
-            status, message = await self._turn(a)
+            status, message = await self._turn(a, items)
         except Exception as exc:  # noqa: BLE001
             message = str(exc)
             events.log("error", "automations", f"'{a.title}' failed: {exc}")
@@ -338,7 +592,7 @@ class AutomationRunner:
             current = get(a.id)
         except AutomationError:
             return  # deleted while running
-        done = current.next_run is None and "RRULE" not in current.schedule
+        done = current.timing_mode != "trigger" and current.next_run is None and "RRULE" not in current.schedule
         _save(current.model_copy(update={"last_run": db.now_iso(), "last_status": status,
                                          "last_result": message[:500] or None,
                                          "enabled": current.enabled and not done}))
@@ -347,7 +601,7 @@ class AutomationRunner:
             bus.publish(EvAutomationRun(automation_id=a.id, title=a.title, status=status, message=message[:300],
                                         session_id=current.session_id))
 
-    async def _turn(self, a: Automation) -> tuple[AutomationRunStatus, str]:
+    async def _turn(self, a: Automation, items: list[str] | None = None) -> tuple[AutomationRunStatus, str]:
         assert self._agent is not None
         session = db.get_session(a.session_id)
         if session is None:
@@ -365,9 +619,21 @@ class AutomationRunner:
                 bus.publish(EvAutomationRun(automation_id=a.id, title=a.title, status="needs_approval",
                                             message="Waiting for your approval in its chat", session_id=a.session_id))
 
-        turn = self._agent.start(session, _instruction(a), listen)
+        # Its chat may be one the user talks in: a run takes its turn after the reply being written there
+        waited = 0
+        while self._agent.busy(session.id):
+            if waited >= BUSY_WAIT_S:
+                raise AutomationError("its chat was busy for an hour; the run was skipped")
+            await asyncio.sleep(5)
+            waited += 5
+        session = db.get_session(a.session_id) or session
+        runtime, _, model_id = session.model.partition(":")
+        borrowed = runtime in _UNLOADABLE and not _is_loaded(model_id)  # the run loads the model: it gives it back
+        turn = self._agent.start(session, _instruction(a, items), listen)
         assert turn.task is not None
         await asyncio.wait({turn.task})
+        if borrowed and not self._agent.active_turns():
+            await self._unload(model_id, a.title)
         reply = turn.reply.content.strip()
         if errors and not reply:
             return "error", errors[-1]
@@ -377,11 +643,29 @@ class AutomationRunner:
         return "reported", reply
 
     @staticmethod
+    async def _unload(model_id: str, title: str) -> None:
+        """Take a model that was loaded only for a run out of memory again, so a run in the background leaves the
+        machine the way it found it."""
+        try:
+            if _is_loaded(model_id):
+                await asyncio.to_thread(models.unload, model_id)
+                events.log("info", "automations", f"Unloaded {model_id} after '{title}' (it was loaded for the run)")
+        except Exception as exc:  # noqa: BLE001 - the run itself is done
+            events.log("warn", "automations", f"Could not unload {model_id} after '{title}': {exc}")
+
+    @staticmethod
     def _forget_quiet(session_id: str, user_message_id: str) -> None:
         """A watch with nothing to report leaves no trace in its chat (else it fills with NO_UPDATE)."""
         found = db.find_message(session_id, user_message_id)
         if found:
             db.delete_messages_from(session_id, found[0])
+
+
+def _is_loaded(model_id: str) -> bool:
+    try:
+        return models.get(model_id).status == "loaded"
+    except ModelError:
+        return False
 
 
 runner = AutomationRunner()

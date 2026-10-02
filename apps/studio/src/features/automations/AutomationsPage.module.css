@@ -161,3 +161,18 @@
   color: var(--warning);
   font-size: var(--text-xs);
 }
+
+/* A trigger's check script, and what it said when it failed */
+.code {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: 1.55;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.checkError {
+  color: var(--danger);
+  font-family: var(--font-mono);
+  white-space: pre-wrap;
+}

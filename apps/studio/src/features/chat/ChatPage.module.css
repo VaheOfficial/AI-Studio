@@ -58,21 +58,7 @@
 }
 
 .heroIcon {
-  display: grid;
-  place-items: center;
-  width: 52px;
-  height: 52px;
-  margin-bottom: 20px;
-  border-radius: var(--radius-xl);
-  background: linear-gradient(145deg, rgb(167 139 250 / 0.25), rgb(34 211 238 / 0.12));
-  border: 1px solid rgb(167 139 250 / 0.35);
-  color: var(--accent-text);
-  box-shadow: 0 0 48px -8px var(--accent-glow);
-}
-
-.heroIcon svg {
-  width: 24px;
-  height: 24px;
+  margin-bottom: 22px;
 }
 
 .heroTitle {
@@ -126,7 +112,7 @@
 }
 
 .suggestion:hover:not(:disabled) {
-  border-color: rgb(167 139 250 / 0.4);
+  border-color: rgb(var(--accent-rgb) / 0.4);
   color: var(--text-1);
   transform: translateY(-2px);
 }
@@ -137,10 +123,40 @@
 }
 
 .composerWrap {
+  position: relative;
   width: 100%;
   max-width: 848px;
   margin: 0 auto;
   padding: 0 24px 16px;
+}
+
+/* The way back to the end of the thread, shown while the user reads further up */
+.toEnd {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 10px);
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px 6px 10px;
+  translate: -50% 0;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-full);
+  background: var(--surface-glass);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 8px 24px -12px rgb(0 0 0 / 0.7);
+  color: var(--text-2);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition:
+    color var(--dur-fast),
+    border-color var(--dur-fast);
+}
+
+.toEnd:hover {
+  border-color: rgb(var(--accent-rgb) / 0.5);
+  color: var(--text-1);
 }
 
 .disclaimer {

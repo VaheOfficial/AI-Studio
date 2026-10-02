@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import shutil
 import struct
 import time
 from pathlib import Path
@@ -33,10 +34,83 @@ EXTRA_PIPELINES = {
     ("ChromaPipeline", "inpaint"): "ChromaInpaintPipeline",
 }
 _PREVIEW_INTERVAL_S = 0.35
+# Text encoders smaller than this stay as they are (CLIP): quantizing them gains nothing. Same threshold as the
+# server's estimate (studio/hub/variants.py ENCODER_MIN_BYTES).
+_QUANT_MIN_BYTES = 2 * 2**30
+_QUANT_DIR = ".quantized"  # in the pipeline folder: the quantized copies of its text encoders
 
 
 def _gib(n: float) -> float:
     return round(n / 2**30, 2)
+
+
+def quantized_encoders(pipeline_dir: Path, mode: str, dtype: Any, min_bytes: int = _QUANT_MIN_BYTES) -> dict[str, Any]:
+    """The pipeline's large text encoders held in 8 or 4 bits (bitsandbytes) instead of bf16: component name →
+    model, to hand to the pipeline in place of the ones in its folder. An 8B-parameter encoder is 16 GB in bf16,
+    about 9 GB in 8 bits and 5 GB in 4, and it is only needed to read the prompt.
+
+    Quantizing reads the full weights, so the result is saved next to them (``.quantized/<component>-<mode>``) and
+    later loads read that smaller copy. Anything going wrong with the copy falls back to quantizing again."""
+    if mode not in ("8bit", "4bit"):
+        return {}
+    import transformers
+    from transformers import BitsAndBytesConfig
+
+    index = json.loads((pipeline_dir / "model_index.json").read_text(encoding="utf-8"))
+    out: dict[str, Any] = {}
+    for name, spec in index.items():
+        folder = pipeline_dir / name
+        if not name.startswith("text_encoder") or not isinstance(spec, list) or spec[:1] != ["transformers"]:
+            continue
+        weights = [f for f in folder.glob("*.safetensors")] if folder.is_dir() else []
+        cls = getattr(transformers, str(spec[1]), None)
+        if cls is None or sum(f.stat().st_size for f in weights) < min_bytes:
+            continue
+        saved = pipeline_dir / _QUANT_DIR / f"{name}-{mode}"
+        model = None
+        if (saved / "config.json").is_file():
+            try:
+                model = cls.from_pretrained(str(saved), dtype=dtype)
+                log(f"{name}: loaded the saved {mode} copy")
+            except Exception as exc:  # noqa: BLE001 - a bad copy must not keep the model from loading
+                log(f"{name}: the saved {mode} copy could not be loaded ({type(exc).__name__}: {exc}); quantizing again")
+                shutil.rmtree(saved, ignore_errors=True)
+        if model is None:
+            config = (BitsAndBytesConfig(load_in_8bit=True) if mode == "8bit" else
+                      BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype=dtype))
+            kwargs: dict[str, Any] = {"quantization_config": config, "dtype": dtype}
+            if weights and all(".fp16." in f.name for f in weights):
+                kwargs["variant"] = "fp16"
+            log(f"{name}: quantizing {cls.__name__} to {mode} (reads the full weights once)")
+            model = cls.from_pretrained(str(folder), **kwargs)
+            try:
+                model.save_pretrained(str(saved))
+            except Exception as exc:  # noqa: BLE001 - the copy is only a shortcut for the next load
+                log(f"{name}: could not save the {mode} copy ({type(exc).__name__}: {exc})")
+                shutil.rmtree(saved, ignore_errors=True)
+        out[name] = model
+    return out
+
+
+def unpack_gguf_strays(model: Any, dtype: Any) -> int:
+    """Turn the GGUF tensors that no GGUF-aware layer holds into plain ones; returns how many.
+
+    diffusers keeps every tensor of a GGUF file that isn't F32 or F16 as packed bytes, and only its linear layers
+    unpack what they hold when they run. Files that store small tensors in another type (a norm's weight as BF16)
+    leave those bytes in layers that use them as they are: a 4096-wide weight shows up as 8192 bytes and the first
+    step fails on the shapes. They are few and small, so they are unpacked once here; the linear weights, which
+    are the model's size, stay packed."""
+    from diffusers.quantizers.gguf.utils import GGUFLinear, GGUFParameter, dequantize_gguf_tensor
+
+    count = 0
+    for module in model.modules():
+        for name, param in list(module._parameters.items()):
+            if not isinstance(param, GGUFParameter) or (isinstance(module, GGUFLinear) and name == "weight"):
+                continue
+            plain = dequantize_gguf_tensor(param).to(dtype)
+            module._parameters[name] = torch.nn.Parameter(plain, requires_grad=False)
+            count += 1
+    return count
 
 
 def _is_fp8(path: Path) -> bool:
@@ -77,11 +151,14 @@ class DiffusersWorker(Worker):
             log(f"Loading full checkpoint {weights.name} as {cls.__name__}")
             pipe = cls.from_single_file(str(weights), dtype=dtype)
         elif weights is not None:
-            pipe = self._pipeline_with_denoiser(pipeline_dir, weights, req.get("weights_format") or "", dtype)
+            encoders = quantized_encoders(pipeline_dir, req.get("text_encoder") or "full", dtype)
+            pipe = self._pipeline_with_denoiser(pipeline_dir, weights, req.get("weights_format") or "", dtype,
+                                                encoders)
         else:
             kwargs: dict[str, Any] = {"dtype": dtype}
             if any(pipeline_dir.glob("*/*.fp16.safetensors")):
                 kwargs["variant"] = "fp16"  # repos where we only downloaded the fp16 files (SDXL)
+            kwargs.update(quantized_encoders(pipeline_dir, req.get("text_encoder") or "full", dtype))
             pipe = DiffusionPipeline.from_pretrained(str(pipeline_dir), **kwargs)
         self.offload = req.get("offload", "none")
         self._place(pipe)
@@ -97,24 +174,33 @@ class DiffusersWorker(Worker):
         log(f"{type(pipe).__name__} ready (offload={self.offload}): {_gib(torch.cuda.memory_allocated())} GiB "
             f"allocated, peak {_gib(torch.cuda.max_memory_allocated())} GiB")
 
-    def _pipeline_with_denoiser(self, pipeline_dir: Path, weights: Path, fmt: str, dtype: Any) -> Any:
+    def _pipeline_with_denoiser(self, pipeline_dir: Path, weights: Path, fmt: str, dtype: Any,
+                                encoders: dict[str, Any] | None = None) -> Any:
         """Load a single-file transformer/unet (GGUF or safetensors, e.g. fp8) and build the pipeline around it
-        from the base components in ``pipeline_dir``."""
+        from the base components in ``pipeline_dir`` (``encoders``: text encoders to use instead of the folder's)."""
         import diffusers
         from diffusers import DiffusionPipeline, GGUFQuantizationConfig
 
         index = json.loads((pipeline_dir / "model_index.json").read_text(encoding="utf-8"))
         slot = "transformer" if "transformer" in index else "unet"
-        model_cls = getattr(diffusers, index[slot][1])
+        model_cls = getattr(diffusers, index[slot][1], None)
+        if model_cls is None:
+            raise BadRequest(f"This model needs {index[slot][1]}, which diffusers {diffusers.__version__} doesn't "
+                             "have: it is newer than the image runtime. Update the runtime under Models → Runtimes.")
         kwargs: dict[str, Any] = {"config": str(pipeline_dir), "subfolder": slot, "dtype": dtype}
         if fmt == "gguf":
             kwargs["quantization_config"] = GGUFQuantizationConfig(compute_dtype=dtype)
         log(f"Loading {fmt} {slot} {weights.name} into {model_cls.__name__} (base: {pipeline_dir})")
         denoiser = model_cls.from_single_file(str(weights), **kwargs)
+        if fmt == "gguf":
+            unpacked = unpack_gguf_strays(denoiser, dtype)
+            if unpacked:
+                log(f"Unpacked {unpacked} small GGUF tensors that sit outside the linear layers")
         if fmt == "safetensors" and _is_fp8(weights):
             # Keep fp8 weights in fp8 and upcast per layer: half the VRAM of bf16
             denoiser.enable_layerwise_casting(storage_dtype=torch.float8_e4m3fn, compute_dtype=dtype)
-        return DiffusionPipeline.from_pretrained(str(pipeline_dir), **{slot: denoiser}, dtype=dtype)
+        return DiffusionPipeline.from_pretrained(str(pipeline_dir), **{slot: denoiser}, **(encoders or {}),
+                                                 dtype=dtype)
 
     def _place(self, pipe: Any) -> None:
         if self.offload == "sequential":

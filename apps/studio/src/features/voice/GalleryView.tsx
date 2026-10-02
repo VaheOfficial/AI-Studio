@@ -87,7 +87,7 @@ export function GalleryView() {
       )}
       <p className={s.count}>{isLoading ? 'Loading…' : `${total.toLocaleString()} voices`}</p>
       {isLoading ? (
-        <div className={s.grid}>
+        <div className={`${s.grid} ui-stagger`}>
           {Array.from({ length: 6 }, (_, i) => (
             <Skeleton key={i} height={150} radius={12} />
           ))}
@@ -95,7 +95,7 @@ export function GalleryView() {
       ) : items.length === 0 ? (
         <EmptyState tint="var(--hue-voice)" title="No voices match" description="Loosen a filter or clear the search." />
       ) : (
-        <div className={s.grid}>
+        <div className={`${s.grid} ui-stagger`}>
           {items.map((a) => (
             <ArchetypeCard key={a.id} archetype={a} />
           ))}

@@ -33,17 +33,25 @@
 }
 
 .logo {
-  width: 28px;
+  display: grid;
+  place-items: center;
+  width: 42px;
   height: 28px;
   flex-shrink: 0;
-  filter: drop-shadow(0 0 10px rgb(139 92 246 / 0.45));
 }
 
 .brandName {
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
+  color: var(--text-2);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
   white-space: nowrap;
+}
+
+.brandMark {
+  color: var(--text-1);
+  font-weight: 700;
+  letter-spacing: 0.12em;
 }
 
 .search {
@@ -80,10 +88,158 @@
   color: var(--text-2);
 }
 
+/* Navigation and recent chats scroll together; the brand above and the footer below stay put */
+.navScroll {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  margin: 0 -10px;
+  padding: 0 10px;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
 .nav {
   display: flex;
   flex-direction: column;
+  flex-shrink: 0;
   gap: 2px;
+}
+
+/* An area's sections, unfolded under its entry: indented, hung on a line in the area's color */
+.subnav {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: 1px;
+  margin-left: 18px;
+  padding: 2px 0 6px 10px;
+  overflow: hidden;
+}
+
+.subnav::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  bottom: 10px;
+  left: 0;
+  width: 1px;
+  background: linear-gradient(color-mix(in srgb, var(--hue) 60%, transparent), color-mix(in srgb, var(--hue) 8%, transparent));
+}
+
+.collapsed .subnav {
+  margin-left: 0;
+  padding-left: 0;
+}
+
+.collapsed .subnav::before {
+  display: none;
+}
+
+.subGroup {
+  padding: 8px 9px 3px;
+  color: var(--text-4);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.subItem {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 29px;
+  padding: 0 9px;
+  border-radius: var(--radius-md);
+  color: var(--text-3);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+  transition: color var(--dur-fast);
+}
+
+.collapsed .subItem {
+  justify-content: center;
+  padding: 0;
+}
+
+.subItem:hover {
+  color: var(--text-1);
+  background: var(--surface);
+}
+
+.subItem .navIcon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.subActive,
+.subActive:hover {
+  color: var(--text-1);
+  background: transparent;
+}
+
+.subActive .navIcon {
+  color: var(--hue);
+}
+
+/* A row that is more than a link: a saved adventure, with its outcome and a menu */
+.subRow {
+  gap: 0;
+  padding: 0 2px 0 0;
+}
+
+.subRowLink {
+  position: relative;
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  height: 100%;
+  padding: 0 4px 0 9px;
+  color: inherit;
+}
+
+.subRowLink .navLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.subFallen,
+.subWon {
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+}
+
+.subFallen {
+  color: var(--danger);
+}
+
+.subWon {
+  color: var(--success);
+}
+
+.subRow:hover .recentMenu {
+  opacity: 1;
+}
+
+.subRow .recentMenu {
+  position: relative;
+}
+
+/* The pill of a section has no edge marker: the line it hangs on is the marker */
+.subItem .navPill::before {
+  display: none;
+}
+
+/* An unfolded area: lit, but the pill sits on its section */
+.navOpen .navLabel {
+  color: var(--text-1);
 }
 
 .navItem {
@@ -176,10 +332,9 @@
 .recent {
   display: flex;
   flex-direction: column;
+  flex-shrink: 0;
   gap: 1px;
   margin-top: 18px;
-  min-height: 0;
-  overflow-y: auto;
 }
 
 .sectionLabel {
@@ -324,12 +479,25 @@
 
 /* -------------------------------- main -------------------------------- */
 
+/* Registered as a color so the glow fades from one area's hue to the next */
+@property --area-hue {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: transparent;
+}
+
 .main {
+  --area-hue: var(--accent);
   display: flex;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  background: var(--bg-0);
+  /* A glow from above in the open area's color. It is drawn here, behind the top bar and the page alike, so it
+     has no edge where the two meet. */
+  background:
+    radial-gradient(ellipse 72% 44% at 50% -10%, color-mix(in srgb, var(--area-hue) 14%, transparent), transparent 72%),
+    var(--bg-0);
+  transition: --area-hue 700ms var(--ease-out);
 }
 
 .topbar {
@@ -365,6 +533,12 @@
   color: var(--danger);
 }
 
+.connUpdate {
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  color: var(--accent-text);
+  cursor: pointer;
+}
+
 .content {
   position: relative;
   flex: 1;
@@ -374,4 +548,27 @@
 
 .page {
   height: 100%;
+}
+
+/* Navigation icons lean in when hovered, and the active one keeps a soft glow in its hue */
+.navIcon svg {
+  transition: transform var(--dur-base) var(--ease-spring);
+}
+
+.navItem:hover .navIcon svg {
+  transform: scale(1.16) rotate(-6deg);
+}
+
+.navActive .navIcon svg {
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--hue) 70%, transparent));
+}
+
+/* The sidebar scrolls without a bar of its own; a fade at the bottom says there is more */
+.navScroll {
+  scrollbar-width: none;
+  mask-image: linear-gradient(#000 calc(100% - 22px), transparent);
+}
+
+.navScroll::-webkit-scrollbar {
+  display: none;
 }

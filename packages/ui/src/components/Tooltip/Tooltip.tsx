@@ -10,11 +10,27 @@ export interface TooltipProps {
   delay?: number
 }
 
+// Whether the person is moving around with the keyboard (Tab, arrows) rather than the pointer
+let byKeyboard = false
+if (typeof window !== 'undefined') {
+  window.addEventListener('keydown', (e) => (byKeyboard = e.key === 'Tab' || e.key.startsWith('Arrow')), true)
+  window.addEventListener('pointerdown', () => (byKeyboard = false), true)
+}
+
 /** Requires <TooltipProvider> once near the app root. */
 export function Tooltip({ content, children, side = 'top', shortcut, delay }: TooltipProps) {
   return (
     <T.Root delayDuration={delay}>
-      <T.Trigger asChild>{children}</T.Trigger>
+      <T.Trigger
+        asChild
+        // Shown on hover, and on focus only when focus got there by keyboard: a panel that opens on a click and
+        // focuses its first button would otherwise open that button's tooltip and leave it up
+        onFocus={(e) => {
+          if (!byKeyboard) e.preventDefault()
+        }}
+      >
+        {children}
+      </T.Trigger>
       <T.Portal>
         <T.Content side={side} sideOffset={6} className={s.content}>
           {content}

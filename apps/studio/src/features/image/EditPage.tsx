@@ -1,5 +1,4 @@
 import { useRef, useState, type DragEvent } from 'react'
-import { AnimatePresence, motion } from 'motion/react'
 import { Brush, Eraser, FlipHorizontal2, ImagePlus, PencilLine, Plus, RefreshCw, Sparkles, Trash2, X } from 'lucide-react'
 import {
   Button,
@@ -20,14 +19,13 @@ import { useDeleteOutput, useOutputs } from '../../api/hooks'
 import { useGenerateImage, useImagePreview, useStars, useToggleStar } from '../../api/image'
 import { useJob } from '../../api/live'
 import type { Output } from '../../api/types'
-import { OutputView } from '../../components/OutputView'
-import { StudioLayout } from '../../components/Page'
-import { Developing } from '../../components/Developing'
+import { StudioHead, StudioLayout } from '../../components/Page'
 import { PAGE_KEY, buildRequest, useImageDraft, useTakeHandoff } from './draft'
 import { ImageDetail } from './ImageDetail'
 import { ImageModelPicker } from './ImageModelPicker'
-import { ImageSettings, ModelNotes } from './ImageSettings'
+import { ImageSettings } from './ImageSettings'
 import { useImageModelChoice } from './modelChoice'
+import { ResultTiles } from './ResultTiles'
 import { sizeForRatio } from './sizes'
 import s from './Studio.module.css'
 import e from './EditPage.module.css'
@@ -144,12 +142,7 @@ export default function EditPage() {
         submit()
       }}
     >
-      <div className={s.head}>
-        <span className={s.headIcon}>
-          <PencilLine />
-        </span>
-        <h1>Edit</h1>
-      </div>
+      <StudioHead icon={<PencilLine />} title="Edit" subtitle="Restyle, inpaint, instruct" />
 
       <ImageModelPicker {...choice} onSelect={choice.select} />
 
@@ -221,7 +214,6 @@ export default function EditPage() {
       )}
 
       {profile && <ImageSettings profile={profile} draft={size ? { ...draft, width: size.w, height: size.h } : draft} patch={patch} lockedRatio={source ? source.width / source.height : undefined} />}
-      {profile && <ModelNotes profile={profile} />}
 
       <div className={s.submit}>
         <Button type="submit" variant="glow" size="lg" block iconLeft={<Sparkles />} loading={generate.isPending || !!running} disabled={!canSubmit}>
@@ -229,6 +221,7 @@ export default function EditPage() {
         </Button>
         <span className={s.hint}>
           <Kbd>Ctrl</Kbd> <Kbd>Enter</Kbd>
+          {profile?.cost && <span className={s.cost}>{profile.cost}</span>}
         </span>
       </div>
       <input ref={fileRef} type="file" accept="image/*" hidden onChange={(ev) => void pickSource(ev.target.files?.[0])} />
@@ -306,27 +299,12 @@ export default function EditPage() {
         {(edits.length > 0 || running) && (
           <section className={e.results}>
             <h2 className={e.resultsTitle}>Recent edits</h2>
-            <motion.div layout className={s.gallery}>
-              <AnimatePresence initial={false}>
-                {Array.from({ length: running ? pending : 0 }, (_, i) => (
-                  <motion.div
-                    key={`pending-${jobId}-${i}`}
-                    layout
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0 }}
-                    style={{ aspectRatio: size ? `${size.w} / ${size.h}` : '1' }}
-                  >
-                    <Developing progress={job?.progress ?? -1} message={job?.message} preview={i === 0 ? preview?.image : undefined} />
-                  </motion.div>
-                ))}
-                {edits.map((o) => (
-                  <motion.div key={o.id} layout>
-                    <OutputView output={o} onOpen={setViewing} onDelete={(x) => del.mutate(x.id)} />
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-            </motion.div>
+            <ResultTiles
+              outputs={edits}
+              pending={running ? { count: pending, width: size?.w ?? 1, height: size?.h ?? 1, job, preview: preview?.image } : undefined}
+              onOpen={setViewing}
+              onDelete={(x) => del.mutate(x.id)}
+            />
           </section>
         )}
       </div>

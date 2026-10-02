@@ -1,6 +1,7 @@
 import type { CSSProperties, HTMLAttributes, ReactNode } from 'react'
 import { motion } from 'motion/react'
 import { cn } from '../../lib/cn'
+import { CircuitField } from '../Effects/CircuitField'
 import s from './Misc.module.css'
 
 export function Kbd({ children, className }: { children: ReactNode; className?: string }) {
@@ -26,22 +27,86 @@ export interface EmptyStateProps {
   className?: string
   /** Color for the icon halo. */
   tint?: string
+  /** `lg` is the hero of an empty page: bigger, with room to breathe. */
+  size?: 'md' | 'lg'
+  /** A circuit field in the tint behind it (give the parent a size: it fills it). */
+  backdrop?: boolean
+  /** Shown under the action, e.g. `Suggestions` to start from. */
+  children?: ReactNode
 }
 
-export function EmptyState({ icon, title, description, action, className, tint }: EmptyStateProps) {
+const emptyLine = {
+  hidden: { opacity: 0, y: 10 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.45, ease: [0.16, 1, 0.3, 1] as const } },
+}
+
+/**
+ * "Nothing here yet". The icon springs in on a tile that two rings orbit (solder pads riding them), and the lines
+ * follow one after another.
+ */
+export function EmptyState({ icon, title, description, action, className, tint, size = 'md', backdrop, children }: EmptyStateProps) {
   return (
     <motion.div
-      className={cn(s.empty, className)}
+      className={cn(s.empty, size === 'lg' && s.emptyLg, className)}
       style={tint ? { ['--tint' as string]: tint } : undefined}
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+      initial="hidden"
+      animate="show"
+      variants={{ show: { transition: { staggerChildren: 0.08 } } }}
     >
-      {icon && <div className={s.emptyIcon}>{icon}</div>}
-      <h3 className={s.emptyTitle}>{title}</h3>
-      {description && <p className={s.emptyDesc}>{description}</p>}
-      {action && <div className={s.emptyAction}>{action}</div>}
+      {backdrop && <CircuitField className={s.emptyBackdrop} density={3.4} tone={tint ? 'current' : 'accent'} />}
+      {icon && (
+        <motion.div
+          className={s.emptyIcon}
+          variants={{
+            hidden: { opacity: 0, scale: 0.4, rotate: -18 },
+            show: { opacity: 1, scale: 1, rotate: 0, transition: { type: 'spring', stiffness: 260, damping: 16 } },
+          }}
+        >
+          <span className={s.emptyOrbit} aria-hidden />
+          <span className={cn(s.emptyOrbit, s.emptyOrbitOuter)} aria-hidden />
+          {icon}
+        </motion.div>
+      )}
+      <motion.h3 className={s.emptyTitle} variants={emptyLine}>
+        {title}
+      </motion.h3>
+      {description && (
+        <motion.p className={s.emptyDesc} variants={emptyLine}>
+          {description}
+        </motion.p>
+      )}
+      {action && (
+        <motion.div className={s.emptyAction} variants={emptyLine}>
+          {action}
+        </motion.div>
+      )}
+      {children && (
+        <motion.div className={s.emptyExtra} variants={emptyLine}>
+          {children}
+        </motion.div>
+      )}
     </motion.div>
+  )
+}
+
+export interface SuggestionsProps {
+  items: string[]
+  onPick: (item: string) => void
+  icon?: ReactNode
+  className?: string
+}
+
+/** Starting points to click: each fills in whatever `onPick` says (a prompt box, usually). */
+export function Suggestions({ items, onPick, icon, className }: SuggestionsProps) {
+  return (
+    <div className={cn(s.suggestions, 'ui-stagger', className)}>
+      {items.map((item) => (
+        <button key={item} type="button" className={s.suggestion} onClick={() => onPick(item)}>
+          {icon && <span className={s.suggestionIcon}>{icon}</span>}
+          <span>{item}</span>
+        </button>
+      ))}
+    </div>
   )
 }
 

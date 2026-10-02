@@ -1,6 +1,7 @@
 .wrap {
   display: flex;
   justify-content: center;
+  height: 100%;
   min-height: 0;
   padding: 32px 24px;
   overflow-y: auto;
@@ -62,24 +63,51 @@
 
 .worlds {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
 }
 
+/* Each world wears its own color (--world): on its emblem, and as a glow once chosen */
 .world {
+  --world: var(--hue-game);
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 11px 12px;
+  gap: 5px;
+  padding: 13px 13px 14px;
+  overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--bg-1);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(160deg, color-mix(in srgb, var(--world) 7%, transparent), transparent 55%), var(--bg-1);
   color: var(--text-2);
   text-align: left;
   cursor: pointer;
   transition:
-    border-color var(--dur-fast),
-    background-color var(--dur-fast);
+    transform var(--dur-base) var(--ease-out),
+    border-color var(--dur-base),
+    box-shadow var(--dur-slow) var(--ease-out);
+}
+
+.worldIcon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  margin-bottom: 4px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--world) 14%, var(--bg-2));
+  border: 1px solid color-mix(in srgb, var(--world) 26%, transparent);
+  color: var(--world);
+  transition: transform var(--dur-base) var(--ease-spring);
+}
+
+.worldIcon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.world:hover .worldIcon {
+  transform: scale(1.12) rotate(-6deg);
 }
 
 .world strong {
@@ -95,13 +123,16 @@
 }
 
 .world:hover {
-  border-color: var(--border-strong);
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--world) 40%, var(--border));
 }
 
 .worldActive,
 .worldActive:hover {
-  border-color: color-mix(in srgb, var(--hue-game) 70%, transparent);
-  background: color-mix(in srgb, var(--hue-game) 9%, var(--bg-1));
+  border-color: color-mix(in srgb, var(--world) 75%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--world) 30%, transparent),
+    0 18px 36px -22px var(--world);
 }
 
 .row {

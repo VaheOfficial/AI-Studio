@@ -93,7 +93,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         if m.runtime != "ollama" and m.status in ("loaded", "loading"):
             db.set_installed_status(m.id, "ready")
     threading.Thread(target=_bring_up_ollama, name="ollama-start", daemon=True).start()
-    events.log("info", "server", f"AI Studio server {__version__} started; data dir {config.DATA_DIR}")
+    events.log("info", "server", f"Grom AI Studio server {__version__} started; data dir {config.DATA_DIR}")
     yield
     ws_routes.ticker.stop()
     await automations.runner.shutdown()
@@ -106,7 +106,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="AI Studio", version=__version__, lifespan=lifespan)
+    app = FastAPI(title="Grom AI Studio", version=__version__, lifespan=lifespan)
     app.add_middleware(CORSMiddleware, allow_origins=config.CORS_ORIGINS, allow_credentials=True,
                        allow_methods=["*"], allow_headers=["*"])
 

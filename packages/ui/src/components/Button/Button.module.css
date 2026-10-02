@@ -146,7 +146,7 @@
   color: var(--text-1);
   background:
     linear-gradient(var(--bg-2), var(--bg-2)) padding-box,
-    conic-gradient(from var(--btn-angle, 0deg), #a78bfa, #22d3ee, #f472b6, #fbbf24, #a78bfa) border-box;
+    conic-gradient(from var(--btn-angle, 0deg), var(--accent-text), var(--accent-2), var(--brand), var(--accent), var(--accent-text)) border-box;
   border: 1px solid transparent;
   animation: btn-rotate 4s linear infinite;
   box-shadow: 0 0 24px -8px var(--accent-glow);
@@ -158,7 +158,7 @@
   inset: 0;
   z-index: -1;
   border-radius: inherit;
-  background: radial-gradient(120% 120% at 50% 0%, rgb(167 139 250 / 0.28), transparent 60%);
+  background: radial-gradient(120% 120% at 50% 0%, rgb(var(--accent-rgb) / 0.28), transparent 60%);
   opacity: 0.8;
   transition: opacity var(--dur-base);
 }
@@ -180,5 +180,67 @@
 @keyframes btn-rotate {
   to {
     --btn-angle: 360deg;
+  }
+}
+
+/* ---------- press ripple ---------- */
+/* A ring of light that spreads from the pointer (the component sets --px / --py and restarts it per press) */
+.button::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(circle var(--ripple, 0px) at var(--px, 50%) var(--py, 50%), rgb(255 255 255 / 0.3), transparent 100%);
+}
+
+.button[data-pressed]:not(:disabled)::after {
+  animation: btn-ripple 0.55s var(--ease-out);
+}
+
+@property --ripple {
+  syntax: '<length>';
+  initial-value: 0px;
+  inherits: false;
+}
+
+@keyframes btn-ripple {
+  from {
+    --ripple: 0px;
+    opacity: 1;
+  }
+  to {
+    --ripple: 220px;
+    opacity: 0;
+  }
+}
+
+/* ---------- sheen ---------- */
+/* Light glides across the primary button when the pointer arrives */
+.primary::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: linear-gradient(105deg, transparent 35%, rgb(255 255 255 / 0.26) 50%, transparent 65%) no-repeat;
+  background-size: 250% 100%;
+  background-position: 160% 0;
+  pointer-events: none;
+}
+
+.primary:hover:not(:disabled)::before {
+  background-position: -60% 0;
+  transition: background-position 0.7s var(--ease-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button[data-pressed]::after {
+    animation: none;
+  }
+
+  .primary:hover::before {
+    transition: none;
   }
 }

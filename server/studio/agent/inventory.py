@@ -91,8 +91,8 @@ def summary() -> str:
             detail = family.get(m.id, m.runtime) + (", sees images" if kind == "text" and _sees(m) else "")
             if m.runtime in _KEYS:
                 detail += ", cloud - billed per use"
-            best = " — default; generate_image uses it when no model_id is given" if m.id == auto_image else ""
+            best = " (default; generate_image uses it when no model_id is given)" if m.id == auto_image else ""
             if m.id in defaults:
-                best += f" — the user's default for {defaults[m.id].replace('_', ' ')}"
+                best += f" (the user's default for {defaults[m.id].replace('_', ' ')})"
             lines.append(f"- {m.id} ({detail}){best}")
     return "\n".join(lines)

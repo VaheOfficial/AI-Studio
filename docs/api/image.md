@@ -24,6 +24,16 @@ offload, gating, missing companions).
 Local profiles come from the installed files: the pipeline class in `model_index.json` (or the base pipeline for
 a single GGUF / safetensors denoiser, or the tensor names of a full single-file checkpoint), with
 step-distilled checkpoints (FLUX schnell, Z-Image-Turbo, distilled FLUX.2 klein) detected from configs/names.
+Qwen-Image 2.1 (`QwenImage21Pipeline`) is one pipeline for text-to-image and editing (up to three reference
+images) and is sampled without guidance: its guidance default is 1 (off), 40 steps, sizes in multiples of 32.
+
+## Runtime
+The `image` environment (image and video workers) pins diffusers to a commit rather than a release
+(`DIFFUSERS` in `server/studio/runtimes/envs.py`): the first one with Qwen-Image 2.1, installed from a source
+archive. An environment installed for an earlier version of the app is brought up to date the first time one of
+its runtimes is needed: its workers are stopped, the install changes only what differs, and the load continues
+(`RuntimeManager._update_env`). The hub does not offer a pipeline whose class the installed diffusers lacks
+(`envs.knows_diffusers_class`): the variant says so instead of downloading weights that can't be loaded.
 
 ## Generate / edit
 `ImageGenerateRequest` = core `ImageRequest` + `mode`, `scheduler`, `images` (data URLs or
@@ -43,6 +53,15 @@ fp8 with layerwise casting) and plugged into the base pipeline, `full_checkpoint
 SD 1.x / SDXL / SD3 single-file checkpoints, and `quant`. Pre-quantized diffusers repos (bitsandbytes NF4 /
 int8) load through `from_pretrained`. The base pipeline for a denoiser file is found in the model folder (hub
 companions) or in another installed diffusers model sharing the Hugging Face card's `base_model`.
+
+`text_encoder` (`full` | `8bit` | `4bit`, from `InstalledModel.text_encoder`) says how the pipeline's large text
+encoders (`text_encoder*` components of 2 GB or more) are held: `8bit` and `4bit` load them through bitsandbytes
+(LLM.int8, NF4) instead of bf16 and hand them to the pipeline in place of the folder's. The first such load reads
+the full weights and saves the quantized encoder in `<pipeline_dir>/.quantized/<component>-<mode>`; later loads
+read that copy (a copy that fails to load is dropped and made again). Small encoders (CLIP) stay as they are.
+The server's VRAM estimate (`image_models.vram_need_gb`) and the offload decision use the same mode.
+`PATCH /api/models/{id}` with `{ "text_encoder": … }` changes it on an installed model: a loaded model is
+unloaded and the change applies at its next load.
 
 ## Tencent HY-Image 3.5
 Cloud only (no open weights), runtime `tencent-cloud`, installed from the catalog entry `hy-image-3.5` (nothing

@@ -26,3 +26,37 @@
   color: var(--text-3);
   font-size: var(--text-xs);
 }
+
+/* Updates (desktop app): version and state on the left, actions on the right */
+.updateRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.updateText {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.updateVersion {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+}
+
+.updateNote {
+  color: var(--text-3);
+  font-size: var(--text-xs);
+}
+
+.updateActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

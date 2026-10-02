@@ -135,3 +135,47 @@
   border-radius: var(--radius-lg);
   cursor: zoom-in;
 }
+
+/* While a reply is being written, a caret sits at the end of its last line and breathes (it does not blink: a
+   blink is two frames). It is drawn on the last block itself so it stays on the line the words are on. */
+.live > :is(p, h1, h2, h3, h4, h5, h6):last-child::after,
+.live > :is(ul, ol):last-child > li:last-child:not(:has(> p, > ul, > ol))::after,
+.live > :is(ul, ol):last-child > li:last-child > p:last-child::after,
+.live > :is(ul, ol):last-child > li:last-child > :is(ul, ol):last-child > li:last-child::after,
+.live:not(:has(> :is(p, h1, h2, h3, h4, h5, h6, ul, ol):last-child))::after {
+  content: '';
+  display: inline-block;
+  width: 0.5em;
+  height: 1.05em;
+  margin-left: 3px;
+  vertical-align: -0.18em;
+  border-radius: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent-glow);
+  animation: caret 1.2s ease-in-out infinite;
+}
+
+/* After a code block, a table or a card there is no line to sit on: the caret takes one of its own */
+.live:not(:has(> :is(p, h1, h2, h3, h4, h5, h6, ul, ol):last-child))::after {
+  display: block;
+  margin: 0.7em 0 0;
+}
+
+@keyframes caret {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+  50% {
+    opacity: 0.25;
+    transform: scaleY(0.72);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live *::after,
+  .live::after {
+    animation: none;
+  }
+}

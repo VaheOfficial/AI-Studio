@@ -9,12 +9,12 @@ from typing import Any
 
 from ... import openrouter, openrouter_catalog, openrouter_usage
 from ...openrouter import OpenRouterError, Usage
-from ..types import (Call, Message, ModelInfo, ProviderError, StepEnd, StreamEvent, TextDelta, ThinkingDelta,
+from ..types import (Call, CallDraft, Message, ModelInfo, ProviderError, StepEnd, StreamEvent, TextDelta, ThinkingDelta,
                      ToolSpec)
 from .base import Provider
-from .openai_chat import followup_content, user_content
+from .openai_chat import followup_content, mark_cache_breakpoints, user_content
 
-_TITLE_MAX_TOKENS = 200  # headroom for models that reason before answering
+_TITLE_MAX_TOKENS = 800  # headroom for models that reason before answering (they are asked to keep it short)
 
 
 # Providers that cache prompts only where the request marks a breakpoint (OpenRouter passes `cache_control` through);
@@ -23,21 +23,8 @@ _EXPLICIT_CACHE = ("anthropic/", "google/gemini")
 
 
 def _cache_breakpoints(model: str, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Mark the system prompt (fixed for the whole chat) and the newest message as cache breakpoints, so every agent
-    step re-reads the long unchanged prefix — tools, system prompt, earlier steps — at the cached price."""
-    if not model.startswith(_EXPLICIT_CACHE):
-        return messages
-    marks = [0, len(messages) - 1] if len(messages) > 1 else [0]
-    for i in marks:
-        msg = messages[i]
-        content = msg.get("content")
-        if isinstance(content, str) and content:
-            msg["content"] = [{"type": "text", "text": content, "cache_control": {"type": "ephemeral"}}]
-        elif isinstance(content, list) and content:
-            text_parts = [p for p in content if isinstance(p, dict) and p.get("type") == "text"]
-            if text_parts:
-                text_parts[-1]["cache_control"] = {"type": "ephemeral"}
-    return messages
+    """Cache breakpoints for the models that need them (see ``mark_cache_breakpoints``)."""
+    return mark_cache_breakpoints(messages) if model.startswith(_EXPLICIT_CACHE) else messages
 
 
 def _merge_reasoning(acc: list[dict[str, Any]], items: list[Any]) -> None:
@@ -125,6 +112,7 @@ class OpenRouterProvider(Provider):
                         fn = tc.get("function") or {}
                         slot["name"] += fn.get("name") or ""
                         slot["args"] += fn.get("arguments") or ""
+                        yield CallDraft(slot["name"], len(slot["args"]))
                     stop = choice.get("finish_reason") or stop
         except OpenRouterError as exc:
             raise ProviderError(str(exc)) from exc
@@ -141,7 +129,7 @@ class OpenRouterProvider(Provider):
                       stop_reason=stop)
 
     async def complete(self, system: str, prompt: str) -> str:
-        body = {"model": self.model, "max_tokens": _TITLE_MAX_TOKENS,
+        body = {"model": self.model, "max_tokens": _TITLE_MAX_TOKENS, "reasoning": {"effort": "low"},
                 "messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}]}
         try:
             message, usage = await openrouter.chat(body, self.api_key)

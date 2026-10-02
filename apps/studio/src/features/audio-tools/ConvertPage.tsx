@@ -9,6 +9,7 @@ import { AUTO_LANGUAGE, LanguagePicker } from '../voice/LanguagePicker'
 import { useRecorder } from '../voice/useRecorder'
 import { RuntimeGate } from '../dub/RuntimeGate'
 import { useConvertVoice } from './api'
+import { PageHeader } from '../../components/Page'
 import s from './Tools.module.css'
 
 /** Voice → Tools → Convert: say it again in another voice (transcribe → speak with the profile, length-matched). */
@@ -37,15 +38,12 @@ export function ConvertTab() {
 
   return (
     <div className={s.page} style={{ ['--hue' as string]: 'var(--hue-voice)' }}>
-      <header className={s.header}>
-        <span className={s.headerIcon}>
-          <Repeat2 />
-        </span>
-        <div>
-          <h1>Convert voice</h1>
-          <p>Transcribes the recording, then speaks the same words in another voice — matched to the original length.</p>
-        </div>
-      </header>
+      <PageHeader
+        hue="var(--hue-voice)"
+        icon={<Repeat2 />}
+        title="Convert voice"
+        subtitle="Transcribes the recording, then speaks the same words in another voice — matched to the original length."
+      />
       <RuntimeGate needsEnv={false} />
       <div className={s.form}>
         <Field label="Target voice">

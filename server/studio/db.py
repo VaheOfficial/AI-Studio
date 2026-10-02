@@ -13,7 +13,8 @@ from datetime import datetime, timezone
 from typing import Any, NamedTuple
 
 from . import config
-from .schemas import AgentMessage, AgentSession, ContextUsage, InstalledModel, Output, ThinkingPart, ToolCall
+from .schemas import (AgentMessage, AgentSession, ContextUsage, InstalledModel, Output, ThinkingPart, TokenUsage,
+                      ToolCall)
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS settings (
@@ -86,7 +87,7 @@ def init() -> None:
     conn.executescript(_SCHEMA)
     _add_missing_columns(conn, "installed_models", _INSTALLED_VARIANT_COLUMNS)
     _add_missing_columns(conn, "messages", {"thinking_parts": "TEXT", "images": "TEXT", "output_tokens": "INTEGER",
-                                            "generation_s": "REAL"})
+                                            "generation_s": "REAL", "usage": "TEXT", "elapsed_s": "REAL"})
     _add_missing_columns(conn, "sessions", _SESSION_CONTEXT_COLUMNS)
     _conn = conn
 
@@ -97,7 +98,8 @@ _SESSION_CONTEXT_COLUMNS = {"context_used": "INTEGER", "context_limit": "INTEGER
                             "summary_seq": "INTEGER", "context_size": "INTEGER"}
 
 # Hub variant fields, added after the first release; databases created before carry the old table.
-_INSTALLED_VARIANT_COLUMNS = {"source_repo": "TEXT", "format": "TEXT", "quant": "TEXT", "files": "TEXT"}
+_INSTALLED_VARIANT_COLUMNS = {"source_repo": "TEXT", "format": "TEXT", "quant": "TEXT", "files": "TEXT",
+                              "text_encoder": "TEXT"}
 
 
 def _add_missing_columns(conn: sqlite3.Connection, table: str, columns: dict[str, str]) -> None:
@@ -159,7 +161,7 @@ def _row_to_model(r: sqlite3.Row) -> InstalledModel:
         source_repo=r["source_repo"], format=r["format"], quant=r["quant"],
         files=json.loads(r["files"]) if r["files"] else None,
         path=r["path"], size_bytes=r["size_bytes"], installed_at=r["installed_at"], status=r["status"],
-        error=r["error"],
+        error=r["error"], text_encoder=r["text_encoder"],
     )
 
 
@@ -175,15 +177,16 @@ def get_installed(model_id: str) -> InstalledModel | None:
 def upsert_installed(m: InstalledModel) -> None:
     execute(
         """INSERT INTO installed_models(id, catalog_id, name, kind, runtime, source_repo, format, quant, files, path,
-                                        size_bytes, installed_at, status, error)
-           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                                        size_bytes, installed_at, status, error, text_encoder)
+           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
            ON CONFLICT(id) DO UPDATE SET catalog_id=excluded.catalog_id, name=excluded.name, kind=excluded.kind,
              runtime=excluded.runtime, source_repo=excluded.source_repo, format=excluded.format,
              quant=excluded.quant, files=excluded.files, path=excluded.path, size_bytes=excluded.size_bytes,
-             installed_at=excluded.installed_at, status=excluded.status, error=excluded.error""",
+             installed_at=excluded.installed_at, status=excluded.status, error=excluded.error,
+             text_encoder=excluded.text_encoder""",
         (m.id, m.catalog_id, m.name, m.kind, m.runtime, m.source_repo, m.format, m.quant,
          json.dumps(m.files) if m.files is not None else None, m.path, m.size_bytes, m.installed_at, m.status,
-         m.error),
+         m.error, m.text_encoder),
     )
 
 
@@ -300,6 +303,7 @@ def _row_to_message(r: sqlite3.Row) -> AgentMessage:
         thinking_parts=[ThinkingPart.model_validate(x) for x in json.loads(r["thinking_parts"])] if r["thinking_parts"] else None,
         tool_calls=[ToolCall.model_validate(c) for c in calls] if calls else None, created_at=r["created_at"],
         output_tokens=r["output_tokens"], generation_s=r["generation_s"],
+        usage=TokenUsage.model_validate_json(r["usage"]) if r["usage"] else None, elapsed_s=r["elapsed_s"],
     )
 
 
@@ -330,11 +334,11 @@ def copy_messages(src: str, dst: str, upto_seq: int) -> None:
         for r in rows:
             execute(
                 """INSERT INTO messages(id, session_id, seq, role, content, images, thinking, thinking_parts, tool_calls,
-                                         steps, created_at, output_tokens, generation_s)
-                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                                         steps, created_at, output_tokens, generation_s, usage, elapsed_s)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (uuid.uuid4().hex[:16], dst, r["seq"], r["role"], r["content"], r["images"], r["thinking"],
                  r["thinking_parts"], r["tool_calls"], r["steps"], r["created_at"], r["output_tokens"],
-                 r["generation_s"]),
+                 r["generation_s"], r["usage"], r["elapsed_s"]),
             )
 
 
@@ -363,22 +367,23 @@ def save_message(session_id: str, msg: AgentMessage, steps: list[dict[str, Any]]
     )
     steps_json = json.dumps(steps) if steps is not None else None
     parts_json = json.dumps([p.model_dump() for p in msg.thinking_parts]) if msg.thinking_parts else None
+    usage_json = msg.usage.model_dump_json() if msg.usage else None
     with _lock:
         if query_one("SELECT 1 FROM messages WHERE id = ?", (msg.id,)):
             execute(
                 "UPDATE messages SET content = ?, thinking = ?, thinking_parts = ?, tool_calls = ?, steps = ?, "
-                "output_tokens = ?, generation_s = ? WHERE id = ?",
+                "output_tokens = ?, generation_s = ?, usage = ?, elapsed_s = ? WHERE id = ?",
                 (msg.content, msg.thinking, parts_json, tool_calls, steps_json, msg.output_tokens, msg.generation_s,
-                 msg.id),
+                 usage_json, msg.elapsed_s, msg.id),
             )  # images are set once, when a user message is created
         else:
             row = query_one("SELECT COALESCE(MAX(seq), 0) + 1 AS n FROM messages WHERE session_id = ?", (session_id,))
             execute(
                 """INSERT INTO messages(id, session_id, seq, role, content, images, thinking, thinking_parts, tool_calls,
-                                       steps, created_at, output_tokens, generation_s)
-                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                                       steps, created_at, output_tokens, generation_s, usage, elapsed_s)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (msg.id, session_id, row["n"] if row else 1, msg.role, msg.content,
                  json.dumps(msg.images) if msg.images else None, msg.thinking, parts_json, tool_calls, steps_json,
-                 msg.created_at, msg.output_tokens, msg.generation_s),
+                 msg.created_at, msg.output_tokens, msg.generation_s, usage_json, msg.elapsed_s),
             )
         update_session(session_id)

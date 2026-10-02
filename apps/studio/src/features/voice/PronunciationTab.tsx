@@ -13,6 +13,7 @@ import {
   useUpdatePronunciation,
 } from '../../api/voice'
 import { LanguagePicker } from './LanguagePicker'
+import { PageHeader } from '../../components/Page'
 import s from './PronunciationTab.module.css'
 
 const EVERY = { value: '*', label: 'All languages', group: 'Scope' }
@@ -38,13 +39,17 @@ export function PronunciationTab() {
 
   return (
     <div className={s.page}>
-      <header className={s.header}>
-        <h1 className={s.title}>Pronunciation</h1>
-        <p className={s.sub}>
-          Respell words the voice gets wrong. Entries match whole words, case-insensitively, longest first, in every speech request. For a
-          one-off, write <code>[[GIF|jiff]]</code> in the script.
-        </p>
-      </header>
+      <PageHeader
+        hue="var(--hue-voice)"
+        icon={<BookA />}
+        title="Pronunciation"
+        subtitle={
+          <>
+            Respell words the voice gets wrong. Entries match whole words, case-insensitively, longest first, in every speech request. For
+            a one-off, write <code>[[GIF|jiff]]</code> in the script.
+          </>
+        }
+      />
 
       <Card padding="md" className={s.addRow}>
         <Input value={term} onChange={(e) => setTerm(e.target.value)} placeholder="Word or phrase, e.g. GIF" />

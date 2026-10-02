@@ -5,7 +5,7 @@ import { AudioPlayer, Badge, Button, Card, ChipGroup, EmptyState, Field, Input, 
 import { AUTO_VOICE, type Archetype } from '../../api/contracts/voice'
 import { useArchetypes, useCreateProfile, useDescribeVoice, useDesignVocabulary, useOnJobDone, useSpeak } from '../../api/voice'
 import { SectionFallback } from '../../components/AreaLayout'
-import { StudioLayout } from '../../components/Page'
+import { StudioHead, StudioLayout } from '../../components/Page'
 import { ArchetypeCard } from './ArchetypeCard'
 import { AUTO, applyAttr, emptyAttrs, instructOf, type DesignAttrs } from './designState'
 import { LanguagePicker } from './LanguagePicker'
@@ -106,6 +106,7 @@ export function DesignTab() {
 
   const controls = (
     <div className={s.controls}>
+      <StudioHead icon={<WandSparkles />} title="Design" subtitle="A new voice from a description" />
       <Field label="Describe the voice" hint="Plain language is mapped to tags live — e.g. “a gravelly old British man”.">
         {(id) => (
           <Textarea

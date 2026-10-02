@@ -19,7 +19,7 @@ from .huggingface import HubError
 
 BASE = "https://ollama.com"
 _TTL_S = 600
-_HEADERS = {"User-Agent": "AI-Studio (local model hub)"}
+_HEADERS = {"User-Agent": "Grom-AI-Studio (local model hub)"}
 _CAPABILITIES = ("tools", "thinking", "vision", "embedding", "audio", "cloud")
 _ITEM = re.compile(r'<li\s[^>]*>\s*<a href="/(?:library/)?(?P<name>[\w.-]+(?:/[\w.-]+)?)"(?P<body>.*?)</li>', re.S)
 _SPAN = re.compile(r"<span[^>]*>\s*([^<]+?)\s*</span>")

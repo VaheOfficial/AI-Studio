@@ -32,7 +32,7 @@ BASE_URL = os.environ.get("STUDIO_OPENROUTER_URL", "https://openrouter.ai/api/v1
 CREDITS_URL = "https://openrouter.ai/settings/credits"
 KEYS_URL = "https://openrouter.ai/settings/keys"
 # App attribution headers (https://openrouter.ai/docs/app-attribution)
-_APP_HEADERS = {"HTTP-Referer": f"http://{config.HOST}:{config.PORT}", "X-OpenRouter-Title": "AI Studio"}
+_APP_HEADERS = {"HTTP-Referer": f"http://{config.HOST}:{config.PORT}", "X-OpenRouter-Title": "Grom AI Studio"}
 _TIMEOUT = httpx.Timeout(30, read=600)
 
 

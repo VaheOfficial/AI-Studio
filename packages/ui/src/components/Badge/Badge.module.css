@@ -67,7 +67,7 @@
   inset: 0;
   border-radius: 50%;
   background: currentColor;
-  animation: ui-pulse-ring 1.6s var(--ease-out) infinite;
+  animation: global(ui-pulse-ring) 1.6s var(--ease-out) infinite;
 }
 
 .status {

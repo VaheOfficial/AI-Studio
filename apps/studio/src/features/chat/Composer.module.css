@@ -16,7 +16,7 @@
 }
 
 .composer:focus-within {
-  border-color: rgb(167 139 250 / 0.45);
+  border-color: rgb(var(--accent-rgb) / 0.45);
   box-shadow:
     0 20px 50px -24px rgb(0 0 0 / 0.8),
     0 0 0 4px var(--accent-soft),
@@ -31,9 +31,9 @@
   right: 24px;
   top: -1px;
   height: 1px;
-  background: linear-gradient(90deg, transparent, #a78bfa, #22d3ee, transparent);
+  background: linear-gradient(90deg, transparent, var(--accent-text), var(--accent-2), transparent);
   background-size: 200% 100%;
-  animation: ui-shimmer 1.4s linear infinite;
+  animation: global(ui-shimmer) 1.4s linear infinite;
 }
 
 .input {

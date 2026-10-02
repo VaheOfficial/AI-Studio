@@ -44,11 +44,27 @@ export function formatTokens(n: number): string {
   return String(n)
 }
 
+/** A length of time the way a stopwatch reads: "42s", "3m 07s", "1h 12m". */
+export function formatDuration(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds))
+  if (s < 60) return `${s}s`
+  const two = (n: number) => String(n).padStart(2, '0')
+  if (s < 3600) return `${Math.floor(s / 60)}m ${two(s % 60)}s`
+  return `${Math.floor(s / 3600)}h ${two(Math.floor((s % 3600) / 60))}m`
+}
+
 /** Generation speed, "84 tok/s"; undefined unless both numbers are known. */
 export function tokensPerSecond(tokens: number | undefined, seconds: number | undefined): string | undefined {
   if (!tokens || !seconds || seconds <= 0) return undefined
   const rate = tokens / seconds
   return `${rate >= 10 ? Math.round(rate) : rate.toFixed(1)} tok/s`
+}
+
+/** A reply's or chat's token use, "22 requests · 283K in (210K cached) · 10K out"; undefined when nothing was counted. */
+export function formatUsage(u: { requests: number; input_tokens: number; cached_tokens: number; output_tokens: number } | undefined) {
+  if (!u || !u.input_tokens) return undefined
+  const cached = u.cached_tokens ? ` (${formatCount(u.cached_tokens)} cached)` : ''
+  return `${u.requests} ${u.requests === 1 ? 'request' : 'requests'} · ${formatCount(u.input_tokens)} in${cached} · ${formatCount(u.output_tokens)} out`
 }
 
 const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 })

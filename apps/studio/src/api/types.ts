@@ -67,6 +67,12 @@ export type InstalledStatus = 'ready' | 'loading' | 'loaded' | 'error'
 /** How a model's weights are packaged — decides which runtime can load it. */
 export type WeightFormat = 'gguf' | 'safetensors' | 'diffusers' | 'ollama' | 'onnx' | 'ct2' | 'other'
 
+/**
+ * How a local image pipeline holds its large text encoders in memory: as shipped (bf16), or quantized when the model
+ * loads (8-bit, or 4-bit NF4). The denoiser's own precision is the variant that was installed.
+ */
+export type TextEncoderMode = 'full' | '8bit' | '4bit'
+
 export interface InstalledModel {
   id: string // same as catalog id for catalog installs
   catalog_id: string
@@ -85,6 +91,13 @@ export interface InstalledModel {
   installed_at: string // ISO
   status: InstalledStatus
   error?: string
+  /** Local image pipelines: how the text encoder is held; absent = full precision. */
+  text_encoder?: TextEncoderMode
+}
+
+/** `PATCH /models/{id}`: change how an installed model is loaded (it is unloaded; applies at the next load). */
+export interface ModelPatch {
+  text_encoder?: TextEncoderMode
 }
 
 export type JobKind = 'download' | 'env' | 'generate' | 'storage'
@@ -186,6 +199,11 @@ export interface Settings {
    */
   default_models: Partial<Record<DefaultTask, string>>
   agent_auto_approve: string[] // tool names that skip approval
+  /**
+   * When the agent gets a completion check after a tool-using turn: for models running on this machine (small ones
+   * tend to stop early), for every model, or never. Each check is one more full-size request.
+   */
+  agent_completion_check: 'local' | 'always' | 'never'
   offload_policy: 'auto' | 'gpu' | 'cpu-offload' | 'sequential-offload'
   /** Runtime preselected for GGUF language models installed from the hub. */
   default_local_backend: LocalBackendId
@@ -296,6 +314,26 @@ export interface AgentMessage {
   output_tokens?: number
   /** …and the seconds it spent generating them (prompt reading excluded): tok/s = output_tokens / generation_s. */
   generation_s?: number
+  usage?: TokenUsage
+  /**
+   * How long the turn behind an assistant reply took, in seconds: model requests, reading prompts and running
+   * tools, without the time it waited for the user (an approval, a question). Set when the turn ends; in an
+   * `ActiveTurn` snapshot it is the time worked so far.
+   */
+  elapsed_s?: number
+}
+
+/**
+ * What an assistant reply used, summed over the model requests of its turn. Each request re-reads the whole
+ * conversation so far, so a turn of N tool steps sends the context N times: `input_tokens` is that sum, not the size
+ * of the conversation. `cached_tokens` is the part of it served from the provider's prompt cache (billed at a
+ * fraction of the price).
+ */
+export interface TokenUsage {
+  requests: number
+  input_tokens: number
+  cached_tokens: number
+  output_tokens: number
 }
 
 export interface AgentSession {
@@ -364,6 +402,8 @@ export type AgentEvent =
   | { type: 'message.start'; message_id: string }
   | { type: 'text.delta'; text: string }
   | { type: 'thinking.delta'; text: string; at: number; seq: number }
+  /** The model is writing a tool call (`chars` of arguments so far); the call follows as `tool.call` when its step ends. */
+  | { type: 'tool.draft'; name: string; chars: number }
   | { type: 'tool.call'; call: ToolCall }
   | { type: 'tool.approval'; call_id: string }
   /** Live update of a running tool's display (e.g. command output so far). */
@@ -376,6 +416,8 @@ export type AgentEvent =
   | { type: 'usage'; cost: number; total: number }
   /** After a model step: the reply's generated tokens and generation seconds so far. */
   | { type: 'speed'; output_tokens: number; generation_s: number }
+  /** After a model step: the reply's token totals so far. */
+  | { type: 'tokens'; usage: TokenUsage }
   /** Context use after a model step; `note` when older steps were trimmed or summarized to make room. */
   | { type: 'context'; usage: ContextUsage; note?: string }
 

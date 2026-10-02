@@ -23,7 +23,7 @@ export function ProvidersSection({ form }: { form: SettingsForm }) {
           />
         )}
       </Field>
-      <div className={s.cards}>
+      <div className={`${s.cards} ui-stagger`}>
         <LocalModelsCard form={form} />
         <OpenRouterCard form={form} />
         <OpenAICompatCard form={form} />

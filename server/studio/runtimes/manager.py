@@ -16,6 +16,7 @@ import httpx
 from ..osenv import detached
 from .. import config, db, events, settings
 from ..events import bus
+from ..jobs import jobs
 from ..localhttp import client
 from ..proc import kill_tree
 from ..schemas import EvRuntimeUpdate, ModelKind, RuntimeId, RuntimeInfo
@@ -158,6 +159,8 @@ class RuntimeManager:
         rdef = self.get_def(runtime_id)
         if rdef.worker is None or rdef.env is None:
             raise WorkerError(f"Runtime '{runtime_id}' has no worker process")
+        if envs.is_outdated(rdef.env):
+            self._update_env(rdef)
         if not envs.is_ready(rdef.env):
             raise RuntimeNotReady(
                 f"The '{rdef.env}' Python environment for {rdef.name} is not installed yet. "
@@ -170,6 +173,24 @@ class RuntimeManager:
             if w and w.proc.poll() is None:
                 self._kill(w)
             return self._spawn(rdef)
+
+    def _update_env(self, rdef: RuntimeDef) -> None:
+        """The env was installed for an earlier version of the app: bring it up to date before it is used, instead
+        of refusing to load anything until the user does it by hand. Workers running on it are stopped first (they
+        hold the old packages); the install only changes what differs."""
+        assert rdef.env
+        events.log("info", "runtimes", f"Updating the '{rdef.env}' environment: this version of the app needs "
+                                       "newer packages in it")
+        for other in RUNTIMES.values():
+            if other.env == rdef.env and other.id in self._workers:
+                self.stop(other.id)
+        job = envs.ensure_env_job(rdef.env, rdef.id)
+        if job is None:
+            return
+        result = jobs.wait_blocking(job.id)
+        if result.status != "done":
+            raise RuntimeNotReady(f"Updating the '{rdef.env}' environment for {rdef.name} failed: "
+                                  f"{result.error or result.status}. Retry under Models → Runtimes.")
 
     def _spawn(self, rdef: RuntimeDef) -> _Worker:
         assert rdef.env and rdef.worker

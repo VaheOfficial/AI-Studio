@@ -8,6 +8,7 @@ import type { Output } from '../../api/types'
 import { timeAgo } from '../../lib/format'
 import { RuntimeGate } from '../dub/RuntimeGate'
 import { useIsolate, type IsolateMode } from './api'
+import { PageHeader } from '../../components/Page'
 import s from './Tools.module.css'
 
 const MODES: { value: IsolateMode; label: string; hint: string }[] = [
@@ -37,15 +38,7 @@ function Separator({ hue, defaultMode, title, subtitle }: { hue: string; default
 
   return (
     <div className={s.page} style={{ ['--hue' as string]: hue }}>
-      <header className={s.header}>
-        <span className={s.headerIcon}>
-          <Layers />
-        </span>
-        <div>
-          <h1>{title}</h1>
-          <p>{subtitle}</p>
-        </div>
-      </header>
+      <PageHeader hue={hue} icon={<Layers />} title={title} subtitle={subtitle} />
       <RuntimeGate />
       <ChipGroup value={mode} onValueChange={setMode} chips={MODES.map((m) => ({ value: m.value, label: m.label, color: hue }))} />
       <p className={s.hint}>{MODES.find((m) => m.value === mode)?.hint}</p>

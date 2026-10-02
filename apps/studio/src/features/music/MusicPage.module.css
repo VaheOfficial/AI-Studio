@@ -4,33 +4,6 @@
   gap: 18px;
 }
 
-.head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding-top: 4px;
-}
-
-.head h1 {
-  font-size: var(--text-lg);
-}
-
-.headIcon {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--hue-music) 14%, var(--bg-2));
-  color: var(--hue-music);
-  box-shadow: 0 0 20px -4px color-mix(in srgb, var(--hue-music) 60%, transparent);
-}
-
-.headIcon svg {
-  width: 15px;
-  height: 15px;
-}
-
 .chips {
   display: flex;
   flex-wrap: wrap;

@@ -27,7 +27,7 @@ import { useGenerateVideo, useVideoProfiles } from '../../api/video'
 import { AspectPicker } from '../../components/AspectPicker'
 import { Developing } from '../../components/Developing'
 import { ModelPicker } from '../../components/ModelPicker'
-import { StudioLayout } from '../../components/Page'
+import { StudioHead, StudioLayout } from '../../components/Page'
 import { useModelChoice } from '../../components/useModelChoice'
 import { RESOLUTIONS, VIDEO_ASPECTS, estimate, formatDuration, sizeFor, type VideoAspect } from './plan'
 import { VideoCard, VideoDetail } from './VideoCard'
@@ -165,12 +165,7 @@ export default function VideoPage() {
         submit()
       }}
     >
-      <div className={s.head}>
-        <span className={s.headIcon}>
-          <Clapperboard />
-        </span>
-        <h1>Video</h1>
-      </div>
+      <StudioHead icon={<Clapperboard />} title="Video" subtitle="Clips from a prompt or an image" />
 
       <ModelPicker kind="video" models={models} selected={selected} onSelect={select} isLoading={isLoading} unavailable={unavailable} />
 
@@ -381,7 +376,7 @@ export default function VideoPage() {
       <GridBackdrop />
       <div className={s.canvas}>
         {videos.length === 0 && !running ? (
-          <EmptyState tint="var(--hue-video)" icon={<Film />} title="No videos yet" description="Describe a shot on the left. Clips land here with their prompt and settings." />
+          <EmptyState size="lg" backdrop tint="var(--hue-video)" icon={<Film />} title="No videos yet" description="Describe a shot on the left. Clips land here with their prompt and settings." />
         ) : (
           <motion.div layout className={s.grid}>
             <AnimatePresence initial={false}>

@@ -4,8 +4,8 @@ import { Badge, Button, IconButton, Progress, Select, Tooltip } from '@studio/ui
 import { useInstallVariant } from '../../api/hub'
 import { useCancelJob } from '../../api/hooks'
 import { useLive } from '../../api/live'
-import type { HubRepo, HubVariant, LocalBackend } from '../../api/contracts/hub'
-import type { LocalBackendId, RuntimeId } from '../../api/types'
+import type { HubFit, HubRepo, HubVariant, LocalBackend } from '../../api/contracts/hub'
+import type { LocalBackendId, RuntimeId, TextEncoderMode } from '../../api/types'
 import { formatBytes, formatSpeed } from '../../lib/format'
 import { isActive } from '../../lib/jobs'
 import { FIT, FORMAT_LABEL } from './hubMeta'
@@ -26,9 +26,15 @@ export interface VariantRowProps {
   backends: LocalBackend[]
   defaultBackend: LocalBackendId
   runtimeNames: Record<string, string>
+  /** Memory estimate and fit to show: the variant's own, or the ones for the chosen text-encoder mode. */
+  fit?: HubFit
+  /** Whether this is the pick to highlight (it depends on the text-encoder mode); defaults to the variant's flag. */
+  recommended?: boolean
+  /** How the text encoder will be held when this variant is installed (image pipelines). */
+  textEncoder?: TextEncoderMode
 }
 
-export function VariantRow({ repo, variant: v, backends, defaultBackend, runtimeNames }: VariantRowProps) {
+export function VariantRow({ repo, variant: v, backends, defaultBackend, runtimeNames, fit: shown, recommended, textEncoder }: VariantRowProps) {
   const install = useInstallVariant()
   const cancel = useCancelJob()
   const job = useLive((st) => st.jobs.find((j) => j.ref === v.ref && j.kind === 'download' && isActive(j)))
@@ -40,16 +46,18 @@ export function VariantRow({ repo, variant: v, backends, defaultBackend, runtime
   const [picked, setPicked] = useState<RuntimeId | undefined>()
   const runtime = picked ?? preferred
   const blocked = runtime ? unavailable(runtime, backends) : (v.note ?? 'No local runtime can load this variant')
-  const fit = FIT[v.fit]
+  const need = shown ?? { vram_gb: v.vram_gb, fit: v.fit }
+  const fit = FIT[need.fit]
+  const pick = recommended ?? !!v.recommended
   const total = v.size_bytes + (v.companions?.size_bytes ?? 0)
   const name = (r: RuntimeId) => runtimeNames[r] ?? r
 
   return (
-    <div className={s.variant} data-recommended={v.recommended || undefined} data-installed={!!v.installed_id || undefined}>
+    <div className={s.variant} data-recommended={pick || undefined} data-installed={!!v.installed_id || undefined}>
       <div className={s.variantMain}>
         <div className={s.variantTitle}>
           <span className={s.variantLabel}>{v.label}</span>
-          {v.recommended && (
+          {pick && (
             <Badge size="sm" tone="accent" icon={<Sparkles />}>
               Recommended
             </Badge>
@@ -73,7 +81,7 @@ export function VariantRow({ repo, variant: v, backends, defaultBackend, runtime
 
       <div className={s.variantSize}>
         <span className={s.sizeMain}>{formatBytes(total)}</span>
-        <Tooltip content={`${fit.hint} Estimated ${v.vram_gb.toFixed(1)} GB to run fully on GPU.`}>
+        <Tooltip content={`${fit.hint} Estimated ${need.vram_gb.toFixed(1)} GB to run fully on GPU${textEncoder && textEncoder !== 'full' ? ` with the text encoder in ${textEncoder === '8bit' ? '8' : '4'} bits` : ''}.`}>
           <span>
             <Badge size="sm" tone={fit.tone} dot>
               {fit.label}
@@ -128,11 +136,11 @@ export function VariantRow({ repo, variant: v, backends, defaultBackend, runtime
             <span>
               <Button
                 size="sm"
-                variant={v.recommended ? 'primary' : 'secondary'}
+                variant={pick ? 'primary' : 'secondary'}
                 iconLeft={<Download />}
                 disabled={!!blocked}
                 loading={install.isPending}
-                onClick={() => install.mutate({ source: repo.source, repo: repo.id, variant: v.id, runtime })}
+                onClick={() => install.mutate({ source: repo.source, repo: repo.id, variant: v.id, runtime, text_encoder: textEncoder })}
               >
                 Download
               </Button>

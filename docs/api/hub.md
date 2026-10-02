@@ -21,6 +21,16 @@ Types: [`apps/studio/src/api/contracts/hub.ts`](../../apps/studio/src/api/contra
   `fit`, the `runtimes` that can load it, and a `note` with honest caveats (no runtime for AWQ/MLX/ONNX, etc.).
 - Gated repos (the repo or its companions' base repo): the install job checks access first and fails with a
   message + link; set `hf_token` in Settings.
+- An image pipeline the image runtime can't load (its `model_index.json` names a pipeline class the installed
+  diffusers doesn't have: a model newer than the runtime) is listed with no `runtimes` and a note saying so.
+- Mix and match for image models: a pipeline's large text encoder (2 GB or more; it comes with every variant, from
+  the repo itself or as a companion) can be held in memory as shipped (`full`), in 8 bits or in 4 bits
+  (`TextEncoderMode`), apart from the precision of the image model. `HubRepo.text_encoder` gives its size, what it
+  takes each way (`memory_bytes`, estimated at 56 % and 34 % of full), the mode the page starts on and the variant
+  to recommend under each mode; each variant's `encoder_fits` gives its VRAM estimate and `fit` per mode
+  (`vram_gb` / `fit` are the `full` ones). The page starts on the most precise mode in which an image model of
+  5 bits or more fits the GPU. `HubInstallRequest.text_encoder` records the choice on the installed model; the
+  download is the same either way (the encoder is converted when the model loads).
 
 ## What an install records (`InstalledModel`)
 | Variant | `runtime` | `path` | `format` / `quant` | `files` (relative to `path`) |

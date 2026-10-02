@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from .schemas import Fit, LocalBackendId, ModelKind, RuntimeId, WeightFormat
+from .schemas import Fit, LocalBackendId, ModelKind, RuntimeId, TextEncoderMode, WeightFormat
 
 HubCatalog = Literal["hf", "ollama", "lmstudio"]
 HubSource = Literal["hf", "ollama"]
@@ -42,6 +42,21 @@ class HubCompanions(BaseModel):
     gated: bool
 
 
+class HubFit(BaseModel):
+    vram_gb: float
+    fit: Fit
+
+
+class HubTextEncoder(BaseModel):
+    """An image repo's large text encoder (it comes with every variant, from this repo or its base pipeline) and
+    the choice of how to hold it in memory. The numbers per mode are on each variant (``encoder_fits``)."""
+
+    size_bytes: int  # on disk, as shipped
+    memory_bytes: dict[TextEncoderMode, int]  # what it takes on the GPU held each way (estimates)
+    default: TextEncoderMode  # the mode the page starts on for this machine
+    recommended: dict[TextEncoderMode, str]  # the variant to pick under each mode (missing: none fits)
+
+
 class HubVariant(BaseModel):
     id: str
     ref: str
@@ -54,6 +69,9 @@ class HubVariant(BaseModel):
     companions: HubCompanions | None = None
     vram_gb: float
     fit: Fit
+    # Image pipelines with a large text encoder: the estimate and fit for each way of holding the encoder
+    # (``vram_gb`` / ``fit`` above are the "full" ones)
+    encoder_fits: dict[TextEncoderMode, HubFit] | None = None
     runtimes: list[RuntimeId]
     note: str | None = None
     recommended: bool | None = None
@@ -78,6 +96,7 @@ class HubRepo(BaseModel):
     url: str
     files: list[HubFile]
     variants: list[HubVariant]
+    text_encoder: HubTextEncoder | None = None
     related: list[HubSearchResult]
 
 
@@ -86,6 +105,7 @@ class HubInstallRequest(BaseModel):
     repo: str
     variant: str
     runtime: RuntimeId | None = None
+    text_encoder: TextEncoderMode | None = None  # image pipelines: how the text encoder will be held (default full)
 
 
 class LocalBackend(BaseModel):

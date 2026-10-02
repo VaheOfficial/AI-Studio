@@ -1,11 +1,12 @@
 import { useDeferredValue, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { Images, Search, Star } from 'lucide-react'
-import { Button, EmptyState, Input, SegmentedControl, Select, Skeleton, VirtualGrid, cn } from '@studio/ui'
+import { Button, EmptyState, Input, Masonry, SegmentedControl, Select, Skeleton, cn } from '@studio/ui'
 import { useDeleteOutput } from '../../api/hooks'
 import { useGallery, useStars, useToggleStar } from '../../api/image'
 import { useLive } from '../../api/live'
 import type { Output } from '../../api/types'
+import { PageHeader } from '../../components/Page'
 import { useImageHandoff } from './draft'
 import { ImageDetail } from './ImageDetail'
 import s from './GalleryPage.module.css'
@@ -13,6 +14,8 @@ import s from './GalleryPage.module.css'
 type Period = 'all' | 'day' | 'week' | 'month'
 const PERIOD_MS: Record<Period, number> = { all: Infinity, day: 864e5, week: 7 * 864e5, month: 30 * 864e5 }
 const ALL = 'all'
+const shapeOf = (o: Output) => (o.width && o.height ? o.height / o.width : 1)
+const idOf = (o: Output) => o.id
 
 export default function GalleryPage() {
   const navigate = useNavigate()
@@ -50,45 +53,47 @@ export default function GalleryPage() {
 
   return (
     <div className={s.page}>
-      <header className={s.bar}>
-        <div className={s.title}>
-          <Images />
-          <h1>Gallery</h1>
-          <span className={s.count}>{outputs ? `${shown.length} of ${all.length}` : ''}</span>
-        </div>
-        <div className={s.filters}>
-          <Input
-            size="sm"
-            className={s.search}
-            iconLeft={<Search size={14} />}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search prompts"
-            aria-label="Search prompts"
-          />
-          <Select
-            size="sm"
-            className={s.model}
-            value={model}
-            onValueChange={setModel}
-            options={[{ value: ALL, label: 'All models' }, ...modelIds.map((id) => ({ value: id, label: nameOf(id) }))]}
-          />
-          <SegmentedControl
-            size="sm"
-            value={period}
-            onValueChange={setPeriod}
-            segments={[
-              { value: 'all', label: 'All time' },
-              { value: 'day', label: 'Today' },
-              { value: 'week', label: '7 days' },
-              { value: 'month', label: '30 days' },
-            ]}
-          />
-          <Button size="sm" variant={starredOnly ? 'primary' : 'secondary'} iconLeft={<Star />} onClick={() => setStarredOnly((v) => !v)}>
-            Starred
-          </Button>
-        </div>
-      </header>
+      <PageHeader
+        className={s.bar}
+        hue="var(--hue-image)"
+        icon={<Images />}
+        title="Gallery"
+        subtitle={outputs ? (shown.length === all.length ? `${all.length} images` : `${shown.length} of ${all.length} images`) : 'Everything you generate or edit'}
+        actions={
+          <div className={s.filters}>
+              <Input
+                size="sm"
+                className={s.search}
+                iconLeft={<Search size={14} />}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search prompts"
+                aria-label="Search prompts"
+              />
+              <Select
+                size="sm"
+                className={s.model}
+                value={model}
+                onValueChange={setModel}
+                options={[{ value: ALL, label: 'All models' }, ...modelIds.map((id) => ({ value: id, label: nameOf(id) }))]}
+              />
+              <SegmentedControl
+                size="sm"
+                value={period}
+                onValueChange={setPeriod}
+                segments={[
+                  { value: 'all', label: 'All time' },
+                  { value: 'day', label: 'Today' },
+                  { value: 'week', label: '7 days' },
+                  { value: 'month', label: '30 days' },
+                ]}
+              />
+              <Button size="sm" variant={starredOnly ? 'primary' : 'secondary'} iconLeft={<Star />} onClick={() => setStarredOnly((v) => !v)}>
+                Starred
+              </Button>
+          </div>
+        }
+      />
 
       <div className={s.body}>
         {isPending ? (
@@ -105,12 +110,14 @@ export default function GalleryPage() {
             description={all.length ? 'Clear a filter to see more.' : 'Everything you generate or edit shows up here.'}
           />
         ) : (
-          <VirtualGrid
+          <Masonry
+            virtual
             className={s.grid}
             items={shown}
-            itemKey={(o) => o.id}
-            minItemWidth={200}
-            gap={10}
+            itemKey={idOf}
+            aspect={shapeOf}
+            minColumnWidth={230}
+            gap={12}
             renderItem={(o) => {
               const isStarred = starred.has(o.id)
               return (

@@ -7,7 +7,7 @@ import { AUTO_VOICE, type VoiceProfile, type VoiceTake } from '../../api/contrac
 import type { InstalledModel } from '../../api/types'
 import { useLanguageName, useOnJobDone, useSpeak, useVoiceProfiles, vk } from '../../api/voice'
 import { ModelPicker } from '../../components/ModelPicker'
-import { StudioLayout } from '../../components/Page'
+import { StudioHead, StudioLayout } from '../../components/Page'
 import { useModelChoice } from '../../components/useModelChoice'
 import { AUTO_LANGUAGE, LanguagePicker } from './LanguagePicker'
 import { ProductionPanel } from './ProductionPanel'
@@ -106,6 +106,7 @@ export function SpeakTab() {
 
   const controls = (
     <div className={s.controls}>
+      <StudioHead icon={<Mic2 />} title="Speak" subtitle="Text to speech" />
       <ModelPicker kind="voice" label="Engine" models={models} selected={selected} onSelect={select} isLoading={isLoading} unavailable={unavailable} />
       {selected && (
         <Field label="Voice" aside={`${available.length} saved`} hint={omni && available.length === 0 ? 'Design or clone a voice to see it here.' : undefined}>
@@ -197,7 +198,7 @@ export function SpeakTab() {
           </div>
         </div>
 
-        <TakesPanel onReuse={reuse} lockable={(t) => t.engine === 'omnivoice' && !!t.profile_id && storedIds.has(t.profile_id)} />
+        <TakesPanel pending={running ? job : undefined} onReuse={reuse} lockable={(t) => t.engine === 'omnivoice' && !!t.profile_id && storedIds.has(t.profile_id)} />
       </div>
     </StudioLayout>
   )

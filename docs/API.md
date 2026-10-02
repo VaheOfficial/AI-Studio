@@ -36,6 +36,9 @@ chat, the agent workspace, automations, connectors and memory work unchanged; `i
 through cloud models when an OpenRouter key is set. `STUDIO_NO_GPU=1` makes the server behave as a machine without
 a GPU. Desktop packaging and the server's environment variables: [`DESKTOP.md`](DESKTOP.md).
 
+`Settings.agent_completion_check` (`local` | `always` | `never`) controls the agent's completion check, see
+[`api/agent.md`](api/agent.md).
+
 `Settings.default_models` maps a task (`image`, `image_edit`, `voice`, `stt`, `music`) to the model the automatic
 picks use — the agent's tools, game media and each page's first choice. A missing task means the best local model;
 a named model that is uninstalled, unpinned or whose cloud key was removed falls back to it too. Cloud models are
@@ -48,6 +51,7 @@ only ever used when named here or picked on a page (they bill per use).
 | GET | `/api/models` | | `InstalledModel[]` |
 | POST | `/api/models/{catalog_id}/install` | | `Job` (kind=download; also ensures runtime env) |
 | DELETE | `/api/models/{id}` | | `204` — unloads, deletes files (`ollama rm` for Ollama models; only the model's own files in LM Studio's library) |
+| PATCH | `/api/models/{id}` | `ModelPatch` (`text_encoder`: `full` \| `8bit` \| `4bit`) | `InstalledModel` — how a local image pipeline holds its text encoder (see [`docs/api/image.md`](api/image.md)); unloads it if loaded. `400` for a model without a large text encoder |
 | POST | `/api/models/{id}/load` | | `InstalledModel` |
 | POST | `/api/models/{id}/unload` | | `InstalledModel` |
 
@@ -94,14 +98,14 @@ Text-to-video and image-to-video (LTX-2.5 with audio, Wan 2.2): `/api/video/mode
 [`docs/api/video.md`](api/video.md).
 
 ## Automations — [`contracts/automations.ts`](../apps/studio/src/api/contracts/automations.ts)
-Prompts the agent runs on a schedule; each posts its runs in its own chat. Details: [`docs/api/agent.md`](api/agent.md#automations).
+Prompts the agent runs on a schedule, or when a trigger's check finds something new; each posts its runs in a chat (the one it was created in, or its own). Details: [`docs/api/agent.md`](api/agent.md#automations).
 | Method | Path | Body | Returns |
 |---|---|---|---|
 | GET | `/api/automations` | | `Automation[]` newest first |
-| POST | `/api/automations` | `AutomationCreate` (`title`, `prompt`, `timing_mode`, `schedule` VEVENT or `dtstart_offset_json`, `model?`) | `Automation`; `400` for an invalid schedule (more often than hourly, a non-repeating watch, nothing in the future) |
+| POST | `/api/automations` | `AutomationCreate` (`title`, `prompt`, `timing_mode`, `schedule` VEVENT or `dtstart_offset_json`, `model?`; for `timing_mode: "trigger"`: `check` and `check_minutes?` instead of a schedule) | `Automation`; `400` for an invalid schedule (more often than hourly, a non-repeating watch, nothing in the future) or a trigger whose check fails |
 | PATCH | `/api/automations/{id}` | `AutomationUpdate` (any field, `enabled`) | `Automation` |
 | DELETE | `/api/automations/{id}` | | `204` (its chat stays) |
-| POST | `/api/automations/{id}/run` | | `Automation` — runs now; `409` while it's already running |
+| POST | `/api/automations/{id}/run` | | `Automation` — runs now (a trigger: its check runs now); `409` while it's already running |
 
 Push: `automation.update`, `automation.removed`, `automation.run` (`status`: `reported` \| `needs_approval` \| `error`; quiet runs send nothing).
 
@@ -157,7 +161,7 @@ unless listed in `settings.agent_auto_approve`.
 - `generate_image(prompt, model_id?, width?, height?, steps?, seed?)` → artifacts
 - `text_to_speech(text, voice_id?, model_id?)` → artifacts
 - `generate_music(tags, lyrics?, duration_s?, model_id?)` → artifacts
-- Images, audio, voices, dubbing, the gallery, `ask_user` and web research (`web_search`, `fetch_url`, `research`):
+- Images, audio, voices, dubbing, the gallery, `ask_user` and reading the web (`fetch_url`):
   [`docs/api/agent.md`](api/agent.md)
 - `list_dir(path)` / `read_file(path)` — sandboxed to `<data_dir>/workspace`
 - ⚠ `write_file(path, content)` — sandboxed to workspace

@@ -23,7 +23,7 @@
 }
 
 .busy {
-  border-color: rgb(139 92 246 / 0.3);
+  border-color: rgb(var(--accent-rgb) / 0.3);
   background: var(--accent-soft);
 }
 

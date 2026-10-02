@@ -58,7 +58,7 @@ pre {
 }
 
 ::selection {
-  background: rgb(139 92 246 / 0.35);
+  background: rgb(var(--accent-rgb) / 0.35);
 }
 
 :focus-visible {
@@ -130,5 +130,41 @@ pre {
   100% {
     transform: scale(2.6);
     opacity: 0;
+  }
+}
+
+/* Children rise into place one after another. Put it on a list or grid; it adds no elements, and once a child
+   has landed the animation lets go of it (hover transforms and layout animations work as usual). */
+.ui-stagger > * {
+  animation: ui-rise 0.55s var(--ease-out) backwards;
+}
+
+.ui-stagger > :nth-child(2) { animation-delay: 45ms; }
+.ui-stagger > :nth-child(3) { animation-delay: 90ms; }
+.ui-stagger > :nth-child(4) { animation-delay: 135ms; }
+.ui-stagger > :nth-child(5) { animation-delay: 180ms; }
+.ui-stagger > :nth-child(6) { animation-delay: 225ms; }
+.ui-stagger > :nth-child(7) { animation-delay: 270ms; }
+.ui-stagger > :nth-child(8) { animation-delay: 315ms; }
+.ui-stagger > :nth-child(9) { animation-delay: 360ms; }
+.ui-stagger > :nth-child(n + 10) { animation-delay: 400ms; }
+
+@keyframes ui-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+    filter: blur(3px);
+  }
+}
+
+@keyframes ui-breathe {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-stagger > * {
+    animation: none;
   }
 }

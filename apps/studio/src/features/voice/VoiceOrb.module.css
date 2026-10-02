@@ -21,7 +21,7 @@
   inset: -4px;
   border-radius: 50%;
   border: 1.5px solid var(--a);
-  animation: ui-pulse-ring 1.6s var(--ease-out) infinite;
+  animation: global(ui-pulse-ring) 1.6s var(--ease-out) infinite;
 }
 
 @keyframes breathe {

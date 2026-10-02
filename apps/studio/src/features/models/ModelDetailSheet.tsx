@@ -6,6 +6,7 @@ import { useHubRepo, useLocalBackends, type RepoRef } from '../../api/hub'
 import { useSettings } from '../../api/hooks'
 import { useLive } from '../../api/live'
 import type { HubRepo } from '../../api/contracts/hub'
+import type { TextEncoderMode } from '../../api/types'
 import { formatBytes, formatCount, timeAgo } from '../../lib/format'
 import { KINDS } from '../../lib/kinds'
 import { MASK } from '../settings/form'
@@ -66,13 +67,22 @@ export function ModelDetailSheet({ repo, onOpenRepo, onClose }: ModelDetailSheet
 
 type VariantFilter = 'all' | 'fits'
 
+const ENCODER_LABEL: Record<TextEncoderMode, string> = { full: 'Full', '8bit': '8-bit', '4bit': '4-bit' }
+const ENCODER_MODES: TextEncoderMode[] = ['full', '8bit', '4bit']
+
 function RepoDetail({ repo, onOpenRepo }: { repo: HubRepo; onOpenRepo: (r: RepoRef) => void }) {
   const { data: settings } = useSettings()
   const { data: backends = [] } = useLocalBackends()
   const runtimes = useLive((st) => st.runtimes)
   const runtimeNames = useMemo(() => Object.fromEntries(runtimes.map((r) => [r.id, r.name])), [runtimes])
   const [filter, setFilter] = useState<VariantFilter>('all')
-  const variants = repo.variants.filter((v) => filter === 'all' || v.fit === 'yes')
+  // Mix and match: the text encoder's precision is chosen apart from the image model's. Every variant's memory
+  // estimate, fit and the recommendation follow the choice.
+  const encoder = repo.text_encoder
+  const [pickedMode, setMode] = useState<TextEncoderMode>()
+  const mode = encoder ? (pickedMode ?? encoder.default) : undefined
+  const fitOf = (v: HubRepo['variants'][number]) => (mode && v.encoder_fits?.[mode]) || { vram_gb: v.vram_gb, fit: v.fit }
+  const variants = repo.variants.filter((v) => filter === 'all' || fitOf(v).fit === 'yes')
   const gatedRepos = [...new Set([...(repo.gated ? [repo.id] : []), ...repo.variants.filter((v) => v.companions?.gated).map((v) => v.companions!.repo)])]
   const hasToken = settings?.hf_token === MASK
   const totalFiles = repo.files.reduce((a, f) => a + f.size, 0)
@@ -163,6 +173,25 @@ function RepoDetail({ repo, onOpenRepo }: { repo: HubRepo; onOpenRepo: (r: RepoR
             ]}
           />
         </div>
+        {encoder && mode && (
+          <div className={s.encoder}>
+            <div className={s.encoderHead}>
+              <span className={s.encoderTitle}>Text encoder</span>
+              <SegmentedControl<TextEncoderMode>
+                size="sm"
+                value={mode}
+                onValueChange={setMode}
+                segments={ENCODER_MODES.map((m) => ({ value: m, label: `${ENCODER_LABEL[m]} · ${formatBytes(encoder.memory_bytes[m])}` }))}
+              />
+            </div>
+            <p className={s.encoderHint}>
+              The part that reads your prompt. It ships in full precision ({formatBytes(encoder.size_bytes)}) and comes with every variant
+              below. Held in fewer bits it takes far less GPU memory, which leaves room for a better image model: 8-bit is close to the
+              original, 4-bit gives up a little prompt accuracy. It is converted on this machine the first time the model loads, so the
+              download is the same, and you can change it later under Models → Installed.
+            </p>
+          </div>
+        )}
         {variants.length === 0 ? (
           <p className={s.empty}>
             {repo.variants.length ? 'No variant fits entirely in GPU memory — switch to All to see offload options.' : 'This repo has no files the studio can install.'}
@@ -174,6 +203,9 @@ function RepoDetail({ repo, onOpenRepo }: { repo: HubRepo; onOpenRepo: (r: RepoR
                 key={v.id}
                 repo={repo}
                 variant={v}
+                fit={fitOf(v)}
+                recommended={encoder && mode ? encoder.recommended[mode] === v.id : !!v.recommended}
+                textEncoder={v.encoder_fits ? mode : undefined}
                 backends={backends}
                 defaultBackend={settings?.default_local_backend ?? 'llamacpp'}
                 runtimeNames={runtimeNames}

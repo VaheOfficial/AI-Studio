@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { Search, SearchX, Sparkles, TriangleAlert } from 'lucide-react'
-import { ChipGroup, EmptyState, Input, SegmentedControl, Select, Skeleton, Spinner, Switch } from '@studio/ui'
+import { ChevronLeft, ChevronRight, Search, SearchX, Sparkles, TriangleAlert } from 'lucide-react'
+import { Button, ChipGroup, EmptyState, IconButton, Input, SegmentedControl, Select, Skeleton, Spinner, Switch, cn } from '@studio/ui'
 import type { HubCatalog, HubSort } from '../../api/contracts/hub'
 import { useHubSearch, type RepoRef } from '../../api/hub'
 import { useCatalog } from '../../api/hooks'
-import type { ModelKind } from '../../api/types'
+import type { CatalogEntry, ModelKind } from '../../api/types'
 import { CatalogCard } from './CatalogCard'
 import { HubResultCard } from './HubResultCard'
 import { TASK_CHIPS, type TaskFilter } from './hubMeta'
@@ -78,41 +78,34 @@ export function DiscoverTab({ initialKind, onOpen }: { initialKind: ModelKind | 
 
   return (
     <div className={s.discover}>
-      <div className={s.bar}>
-        <SegmentedControl<HubCatalog>
-          aria-label="Catalog"
-          value={catalog}
-          onValueChange={setCatalog}
-          segments={CATALOGS.map((c) => ({ value: c.value, label: c.label }))}
-        />
-        <Input
-          iconLeft={<Search />}
-          placeholder={catalog === 'ollama' ? 'Search the Ollama library…' : 'Search models — “flux”, “qwen3 gguf”, “whisper”…'}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          className={s.search}
-          trailing={search.isFetching ? <Spinner size={14} /> : undefined}
-        />
+      <div className={s.finder}>
+        <div className={s.bar}>
+          <Input
+            size="lg"
+            iconLeft={<Search />}
+            placeholder={catalog === 'ollama' ? 'Search the Ollama library…' : 'Search models — “flux”, “qwen3 gguf”, “whisper”…'}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            className={s.search}
+            trailing={search.isFetching ? <Spinner size={14} /> : undefined}
+          />
+          <SegmentedControl<HubCatalog>
+            aria-label="Catalog"
+            value={catalog}
+            onValueChange={setCatalog}
+            segments={CATALOGS.map((c) => ({ value: c.value, label: c.label }))}
+          />
+        </div>
         {hf && (
-          <Select<HubSort> size="sm" value={sort} onValueChange={setSort} options={SORTS} className={s.sort} />
-        )}
-        {catalog === 'hf' && <Switch checked={gguf} onCheckedChange={setGguf} label="GGUF only" />}
-      </div>
-      {hf && <ChipGroup<TaskFilter> aria-label="Task" value={task} onValueChange={setTask} chips={TASK_CHIPS} />}
-      <p className={s.blurb}>{blurb}</p>
-
-      {showFeatured && (
-        <section className={s.section}>
-          <h2 className={s.heading}>
-            <Sparkles size={15} /> Featured <span className={s.sub}>curated picks, tested on this studio</span>
-          </h2>
-          <div className={s.grid}>
-            {picks.map((e, i) => (
-              <CatalogCard key={e.id} entry={e} index={i} onOpen={onOpen} />
-            ))}
+          <div className={s.filters}>
+            <ChipGroup<TaskFilter> aria-label="Task" value={task} onValueChange={setTask} chips={TASK_CHIPS} className={s.tasks} />
+            {catalog === 'hf' && <Switch checked={gguf} onCheckedChange={setGguf} label="GGUF only" />}
+            <Select<HubSort> size="sm" value={sort} onValueChange={setSort} options={SORTS} className={s.sort} />
           </div>
-        </section>
-      )}
+        )}
+      </div>
+
+      {showFeatured && <Featured picks={picks} onOpen={onOpen} />}
 
       <section className={s.section}>
         <h2 className={s.heading}>
@@ -123,13 +116,14 @@ export function DiscoverTab({ initialKind, onOpen }: { initialKind: ModelKind | 
           ) : (
             <>
               {SORTS.find((x) => x.value === sort)!.label} on {CATALOGS.find((c) => c.value === catalog)!.label}
+              <span className={s.sub}>{blurb}</span>
             </>
           )}
         </h2>
         {search.isError ? (
           <EmptyState icon={<TriangleAlert />} title="Search failed" description={search.error.message} />
         ) : search.isLoading ? (
-          <div className={s.grid}>
+          <div className={`${s.grid} ui-stagger`}>
             {Array.from({ length: 9 }, (_, i) => (
               <Skeleton key={i} height={168} radius={16} />
             ))}
@@ -147,5 +141,60 @@ export function DiscoverTab({ initialKind, onOpen }: { initialKind: ModelKind | 
         )}
       </section>
     </div>
+  )
+}
+
+/** The curated picks: one row to page through, or all of them as a grid. */
+function Featured({ picks, onOpen }: { picks: CatalogEntry[]; onOpen: (repo: RepoRef) => void }) {
+  const [all, setAll] = useState(false)
+  const rail = useRef<HTMLDivElement>(null)
+  // Which ends of the row have more behind them
+  const [more, setMore] = useState({ before: false, after: false })
+  const measure = useCallback(() => {
+    const el = rail.current
+    if (el) setMore({ before: el.scrollLeft > 4, after: el.scrollLeft + el.clientWidth < el.scrollWidth - 4 })
+  }, [])
+  useEffect(() => {
+    const el = rail.current
+    if (!el) return
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [measure, all, picks.length])
+  const page = (direction: 1 | -1) => {
+    const el = rail.current
+    if (el) el.scrollBy({ left: direction * el.clientWidth * 0.85, behavior: 'smooth' })
+  }
+  return (
+    <section className={s.section}>
+      <div className={s.headRow}>
+        <h2 className={s.heading}>
+          <Sparkles size={15} /> Featured <span className={s.sub}>curated picks, tested on this studio</span>
+        </h2>
+        {!all && (
+          <>
+            <IconButton size="sm" label="Earlier picks" icon={<ChevronLeft />} disabled={!more.before} onClick={() => page(-1)} />
+            <IconButton size="sm" label="More picks" icon={<ChevronRight />} disabled={!more.after} onClick={() => page(1)} />
+          </>
+        )}
+        <Button size="sm" variant="ghost" onClick={() => setAll((v) => !v)}>
+          {all ? 'Show less' : `Show all ${picks.length}`}
+        </Button>
+      </div>
+      {all ? (
+        <div className={s.grid}>
+          {picks.map((e, i) => (
+            <CatalogCard key={e.id} entry={e} index={i} onOpen={onOpen} />
+          ))}
+        </div>
+      ) : (
+        <div ref={rail} className={cn(s.shelf, more.before && s.fadeBefore, more.after && s.fadeAfter)} onScroll={measure}>
+          {picks.map((e, i) => (
+            <CatalogCard key={e.id} entry={e} index={i} onOpen={onOpen} />
+          ))}
+        </div>
+      )}
+    </section>
   )
 }

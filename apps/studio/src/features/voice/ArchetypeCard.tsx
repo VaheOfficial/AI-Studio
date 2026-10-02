@@ -31,7 +31,7 @@ export function ArchetypeCard({ archetype: a, onStart }: { archetype: Archetype;
   const shownUrl = url ?? a.preview_url
 
   return (
-    <Card padding="md" className={s.card} tint="var(--hue-voice)">
+    <Card padding="md" spotlight className={s.card} tint="var(--hue-voice)">
       <div className={s.head}>
         <VoiceOrb seed={a.id} size={34} />
         <div className={s.titles}>

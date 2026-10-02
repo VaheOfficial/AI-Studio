@@ -21,6 +21,7 @@ export const HubResultCard = forwardRef<HTMLDivElement, HubResultCardProps>(func
   return (
     <motion.div
       ref={ref}
+      className={s.cell}
       layout
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}

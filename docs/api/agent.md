@@ -74,13 +74,39 @@ The cards show inline (open by default); the model still states the facts in its
 `studio/automations.py`. An automation is a prompt with a schedule — an iCal VEVENT (`DTSTART` in local time,
 optional `RRULE`, parsed with dateutil; at most hourly) or a relative one-off (`dtstart_offset_json`,
 `relativedelta` kwargs) — and a `timing_mode`: `exact_schedule`, `flexible_schedule` (dayparts: morning 08:00,
-afternoon 15:00, evening 19:00) or `condition_watch` (must repeat). Each owns a chat ("Automation · title", in the
-workspace folder of the chat that created it) where every run is an agent turn with a `[Scheduled automation …]`
-header. A watch answers `NO_UPDATE` when there is nothing to report: that exchange is removed and nothing is sent.
+afternoon 15:00, evening 19:00) or `condition_watch` (must repeat). Every run is an agent turn with a
+`[Scheduled automation …]` header in the automation's chat. That is the chat the agent created it in (the runs
+continue that conversation; a run waits while a reply is being written there, up to an hour), or a chat of its own
+("Automation · title", in the workspace folder of the chat that created it) when the tool call says `new_chat` or the
+automation was created on the Automations page. The chat view shows the header as a line naming the automation
+(`automationRunOf` in `api/automations.ts`) instead of a message bubble. A watch answers `NO_UPDATE` when there is nothing to report: that exchange is removed and nothing is sent.
 A scheduler checks every 20 s; runs missed while the server was off happen once at the next start; a finished
-one-off switches itself off. A report, an error or a pending approval pushes `automation.run` (toast, and a desktop
-notification when the app is hidden and allowed). Tools: `automation_create`, `automation_update` (incl. `enabled`),
+one-off switches itself off. A report, an error or a pending approval pushes `automation.run` (toast, and a system
+notification when the app is not in front). Tools: `automation_create`, `automation_update` (incl. `enabled`),
 `automation_list`, `automation_delete` (asks). UI: the Automations page (`/automations`).
+
+### Triggers
+
+`timing_mode: "trigger"` has no schedule. It has a `check`: a Python script the server runs by itself every
+`check_minutes` (1 to 1440, default 15) in the `python` environment (the one `run_python` uses), in a folder of its
+own (`<data_dir>/automations/<id>/`, where the script may keep files), with a 60 s limit and no model involved.
+Every line the script prints is an item (at most 200 per check, 600 characters each). The server remembers the
+items a trigger has printed (a hash per line, the newest 5 000); a line that is new wakes the agent in the
+automation's chat with a `[Trigger … fired]` header, the new lines and the prompt. The agent may still answer
+`NO_UPDATE` when nothing in them is worth a report. While a run is in progress, new items wait for the next check.
+
+- Creating a trigger (or giving it another check) runs the check first. A script that fails is refused with its own
+  error (`400`); what it prints at that moment is the starting point and is not reported. When the Python tools
+  environment is not installed yet, the request starts that installation and answers `409`; the agent's tool waits
+  for it instead.
+- A check that starts failing is said once (`automation.run` with `status: "error"`) and shown on the card
+  (`check_error`) until it runs again; `last_check` is when it last ran. For a trigger `next_run` is the next check,
+  and `POST /api/automations/{id}/run` runs the check now.
+- From the agent, a call that carries a `check` asks for approval the way `run_python` does (allowing `run_python`
+  without asking allows it too): it is code that keeps running unattended.
+
+A run on a local model (llama.cpp, LM Studio) that had to load the model unloads it again when it ends, unless
+another chat is using it by then: a run in the background leaves the machine as it found it.
 
 ## Connectors (MCP)
 
@@ -113,7 +139,8 @@ something the user sent). Only the last 3 image-bearing messages keep their pict
 Ollama chat requests use `settings.ollama_ctx_size` (default 32768), capped at the model's trained length. Before
 every model step the loop (`agent/context.py`):
 
-1. keeps only the latest pictures attached;
+1. keeps only the latest pictures attached: up to 6 messages keep theirs, and when there are more, all but the
+   newest 3 lose them at once (taking pictures out one at a time would move the cached prefix at every step);
 2. past 55 % of the window, trims old tool outputs (all but the newest 3) to a short head — once per turn, so the
    provider's prompt cache is invalidated once rather than every step;
 3. past 80 %, has the chat model summarize everything except the user's current request and the latest steps;
@@ -151,9 +178,41 @@ Typed in the composer (a menu opens on `/`); handled by the client, not sent to 
 ### Prompt caching
 
 OpenRouter requests to `anthropic/*` and `google/gemini*` models get `cache_control` breakpoints (the system prompt
-and the newest message); OpenAI, DeepSeek, Grok and others behind OpenRouter cache repeated prefixes automatically.
+and the newest message), and so do Claude models on an OpenAI-compatible endpoint (an endpoint that rejects them
+gets the request again without, and is remembered); OpenAI, DeepSeek, Grok and others behind OpenRouter cache repeated prefixes automatically.
 Cached input tokens are read from `usage.prompt_tokens_details.cached_tokens` and logged. Context trimming happens
 at most once per turn so it doesn't break the cache every step.
+
+## Titles
+
+A new chat is named from its first message, at the start of its first turn (`title` event), so a long turn has its
+title while it works and one that fails or is stopped still gets one. For a model on this machine the request goes
+first and is asked at the end of the chat's own prompt (same system prompt and tools, the user's message, then the
+request), with thinking switched off where the endpoint has a switch: these servers keep one conversation's prompt
+in memory, and a small request of its own would push it out. Elsewhere a small request runs alongside the reply.
+Without a usable answer the title is the message's first six words.
+
+## Turn time and what the model is doing
+
+Assistant messages carry `elapsed_s`: how long their turn worked (model requests, prompt reading and tools), without
+the time it waited for the user's approval or answer. It is set when the turn ends; while it runs the chat counts
+by itself and stops the clock while a call waits for the user. A client that connects in the middle of a turn gets
+the time worked so far as the `elapsed_s` of the `ActiveTurn`'s message and counts on from there.
+
+While the model writes a tool call the server sends `{ type: "tool.draft", name, chars }` (at most five a second):
+the tool's name and how many characters of arguments exist so far. The call itself still arrives as `tool.call`
+when the step ends; the draft is not part of the saved message. The chat shows it as a line under the reply
+("Writing Python… 12K characters"), so a long script or file being written does not look like a stall.
+
+A picture a tool returned earlier and that was deleted since (an agent removing its own previews) is dropped from
+the conversation before the next request.
+
+## Notifications
+
+The chat tells the user about a pending approval, an `ask_user` question, an error, and the end of a turn that took
+20 s or more when they are not looking at that chat: a system notification when the app is not in front (the
+desktop shell shows it and flashes the taskbar button; a click opens the chat), a toast with "Open chat" when they
+are elsewhere in the app. Automation chats are announced by `automation.run` instead.
 
 ## Generation speed
 
@@ -166,6 +225,16 @@ of OpenAI-compatible APIs (requested with `stream_options.include_usage`) and
 OpenRouter's billed completion tokens; when a provider doesn't time itself, the loop times the step from its first
 streamed token. A step without both numbers isn't counted.
 
+## Token usage
+
+An agent turn is several model requests (one per tool step, plus the completion check when it applies), and each request sends the
+whole conversation again: system prompt, tool definitions and every earlier step. The context gauge shows the size
+of one request; what a provider bills is the sum over the requests. Assistant messages carry that sum as
+`usage: { requests, input_tokens, cached_tokens, output_tokens }`, sent after each model step as
+`{ type: "tokens", usage }` and shown under the reply and, summed, under the composer. `cached_tokens` is the part
+of the input the provider read from its prompt cache (`usage.prompt_tokens_details.cached_tokens`, or the
+`cache_read_input_tokens` some gateways pass through), which providers bill at a fraction of the price.
+
 ## Questions to the user
 
 `ask_user(question, options?)` puts the call in status `awaiting_input` with a `question` display. The user answers
@@ -176,7 +245,10 @@ available in background tasks (the tool tells the model to decide itself). Stopp
 
 When a tool-using turn stops, the loop sends the model a checklist and it answers with a `[[DONE: yes|no]]` verdict
 (see `agent/loop.py`). That answer is streamed as a thinking block, not as reply text; if it is the only thing the
-model wrote, it becomes the reply.
+model wrote, it becomes the reply. `Settings.agent_completion_check` says who gets it: `local` (the default: models
+running on this machine through Ollama, llama.cpp or LM Studio, where small models tend to stop early), `always`,
+or `never`. Without the check a turn ends when the model stops calling tools; each check is one more full-size
+request.
 
 ## Tools added in 2.0
 
@@ -190,16 +262,36 @@ model wrote, it becomes the reply.
 | `start_dub(source, name?, speakers?)` | New Dub project from a file or video URL |
 | `list_outputs(kind?, query?, limit?)` | Search past generations by prompt |
 | `ask_user(question, options?)` | See above |
-| `web_search(query, count?)` | Results with snippets (`sources` display) |
 | `fetch_url(url, question?, offset?)` | Readable page/PDF text (trafilatura; the agent's browser renders JavaScript-only pages); with `question`, only the BM25-ranked passages that answer it |
-| `research(question, queries[])` | 1-4 searches, top 8 pages read in parallel, 10 best passages numbered `[n]` by source for citation |
 
-Search is DuckDuckGo only (other engines serve captchas or junk results to programs). Requests are serialized one
-second apart; while DuckDuckGo rate-limits (HTTP 202) a search waits 15, 30, 60 and 120 s, alternating between its
-html and lite endpoints, and shows the wait on the call's card; after that it fails with a hint to search in the
-browser, where the user can take over. Search results are cached for an hour in memory, fetched pages under
-`<data_dir>/cache/web`. `research` drops duplicate queries, and passages must contain at least 30 % of the question's
-distinct terms to be used.
+There is no search tool: search engines turn plain HTTP clients away, so the agent looks things up in its browser
+(`browser_navigate` to a search page, `browser_read`, then the pages themselves), where the user can take over if a
+site asks for a check. `fetch_url` reads a known address without moving the browser; fetched pages are cached for an
+hour under `<data_dir>/cache/web`, and with a `question` a passage must contain at least 30 % of the question's
+distinct terms to be returned.
 
 Browser: `browser_read` `snapshot` returns the page's accessibility tree with `[ref=eN]` ids on interactive elements
 (anonymous wrappers dropped, ≤ 16 000 chars); `browser_click` / `browser_type` accept `ref`.
+
+Opening a page returns its content in the same call, so reading it takes no second request: `browser_navigate`
+(and a click or typing that lands on another address) answers with the page's main content as extracted by
+trafilatura, or all of its visible text when that extraction is shorter than 1 500 chars (a list of links, an app),
+cut at 8 000 chars. A Brave, Bing or DuckDuckGo search page answers with its results instead: title, address (the
+engine's redirect link decoded) and snippet. A page that turns the browser away (it comes back empty, or asks for
+a human check) answers with one short line saying so, so the model moves on instead of trying the site again.
+
+Under the desktop app the agent's browser is the app's own: Electron is Chromium, and the shell keeps windowless
+(offscreen) pages for the agent in a session of their own (`persist:agent-browser`: its cookies and logins are apart
+from the app's and survive restarts). They are real pages of a real browser that are never a window on any system.
+The shell opens the DevTools protocol on a local port and passes it to the server as `STUDIO_BROWSER_CDP`; the
+server connects with Playwright and opens each chat's page from an anchor page the shell keeps (a page cannot be
+created from outside). The user agent is Electron's own, and nothing about the browser is disguised; a site that
+still refuses it can be passed by the user taking the page over in the app. Pages the agent visits get no device
+permissions and cannot download files.
+
+Without the shell (`pnpm server`) the browser is the installed Edge, Chrome or Playwright's Chromium, started
+headless on a profile in `<data_dir>/browser/profile`. A headless browser says so in its user agent, and many sites
+answer that with a challenge, an empty page or wrong results.
+
+Requests to llama-server carry `parallel_tool_calls: true`, which it needs before a model may return several tool
+calls in one response; other OpenAI-compatible endpoints allow that by default.

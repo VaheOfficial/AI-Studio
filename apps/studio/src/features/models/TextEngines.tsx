@@ -14,7 +14,7 @@ export function TextEngines() {
   const { data: settings } = useSettings()
   if (isLoading || !backends) {
     return (
-      <div className={s.grid}>
+      <div className={`${s.grid} ui-stagger`}>
         {BACKEND_ORDER.map((id) => (
           <Skeleton key={id} height={210} radius={16} />
         ))}
@@ -22,7 +22,7 @@ export function TextEngines() {
     )
   }
   return (
-    <div className={s.grid}>
+    <div className={`${s.grid} ui-stagger`}>
       {BACKEND_ORDER.map((id) => {
         const b = backends.find((x) => x.id === id)
         return b && <EngineCard key={id} backend={b} isDefault={settings?.default_local_backend === id} />

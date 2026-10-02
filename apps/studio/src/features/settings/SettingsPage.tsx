@@ -10,6 +10,7 @@ import { AssistantSection } from './AssistantSection'
 import { ConnectorsSection } from './ConnectorsSection'
 import { DefaultModelsSection } from './DefaultModelsSection'
 import { StorageSection } from './StorageSection'
+import { UpdatesSection } from './UpdatesSection'
 import { MASK, SecretInput, SettingsSection, type SecretEdit, type SecretKey, type SettingsForm } from './form'
 import { ProvidersSection } from './providers/ProvidersSection'
 import s from './SettingsPage.module.css'
@@ -122,6 +123,20 @@ export default function SettingsPage() {
             />
           ))}
         </div>
+        <Field
+          label="Completion check"
+          hint="After a turn that used tools, the agent is asked to confirm the work is really done before it stops. It keeps small models from quitting early, and costs one more full-size request each time."
+        >
+          <SegmentedControl<Settings['agent_completion_check']>
+            value={form.values.agent_completion_check}
+            onValueChange={(v) => form.set('agent_completion_check', v)}
+            segments={[
+              { value: 'local', label: 'Local models' },
+              { value: 'always', label: 'Always' },
+              { value: 'never', label: 'Never' },
+            ]}
+          />
+        </Field>
       </SettingsSection>
 
       <SettingsSection icon={<Cpu />} title="Performance" description="How large models are placed when they don't fit entirely in VRAM.">
@@ -141,6 +156,8 @@ export default function SettingsPage() {
           <Input value={settings.data_dir} readOnly />
         </Field>
       </SettingsSection>
+
+      <UpdatesSection />
 
       <SettingsSection icon={<Palette />} title="Appearance">
         <Field label="Theme">

@@ -1,4 +1,4 @@
-# Turns AI Studio on or off (the desktop shortcut runs this through studio-toggle.vbs, hidden).
+# Turns Grom AI Studio on or off (the desktop shortcut runs this through studio-toggle.vbs, hidden).
 # Off -> starts the server (8765) and the web app (5173) in the background, then opens the browser.
 # On  -> stops both, with everything they started (model workers, llama-server, Ollama).
 param([switch]$Install)
@@ -11,7 +11,7 @@ $url = 'http://localhost:5173'
 $shell = New-Object -ComObject WScript.Shell
 
 function Show([string]$text, [int]$seconds = 3, [int]$icon = 64) {
-    [void]$shell.Popup($text, $seconds, 'AI Studio', $icon)
+    [void]$shell.Popup($text, $seconds, 'Grom AI Studio', $icon)
 }
 
 function Get-Listener([int]$port) {
@@ -26,7 +26,7 @@ if ($Install) {
     $lnk.Arguments = '"' + (Join-Path $PSScriptRoot 'studio-toggle.vbs') + '"'
     $lnk.WorkingDirectory = $root
     $lnk.IconLocation = (Join-Path $env:SystemRoot 'System32\shell32.dll') + ',27'
-    $lnk.Description = 'Turn AI Studio on or off'
+    $lnk.Description = 'Turn Grom AI Studio on or off'
     $lnk.Save()
     Write-Host "Created $(Join-Path $desktop 'AI Studio.lnk')"
     exit 0
@@ -44,7 +44,7 @@ if ($running) {
     Get-CimInstance Win32_Process -Filter "Name = 'pwsh.exe'" |
         Where-Object { $_.CommandLine -like '*AI Studio*server\run.ps1*' -or $_.CommandLine -like '*studio-toggle-web*' } |
         ForEach-Object { & taskkill.exe /PID $_.ProcessId /T /F *> $null }
-    Show 'AI Studio is off.'
+    Show 'Grom AI Studio is off.'
     exit 0
 }
 
@@ -57,7 +57,7 @@ Start-Process $pwsh -WindowStyle Hidden -WorkingDirectory $root -ArgumentList @(
 Start-Process $pwsh -WindowStyle Hidden -WorkingDirectory $root -ArgumentList @(
     '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command',
     "`$host.UI.RawUI.WindowTitle = 'studio-toggle-web'; pnpm --filter studio dev *> '$logs\web.log' # studio-toggle-web")
-Show 'Starting AI Studio… the browser opens when it is ready.' 3
+Show 'Starting Grom AI Studio… the browser opens when it is ready.' 3
 
 $deadline = (Get-Date).AddMinutes(5)  # the first start may install server dependencies
 while ((Get-Date) -lt $deadline) {
@@ -67,5 +67,5 @@ while ((Get-Date) -lt $deadline) {
         exit 0
     }
 }
-Show "AI Studio didn't start within 5 minutes. See the logs in $logs (server.log, web.log)." 0 48
+Show "Grom AI Studio didn't start within 5 minutes. See the logs in $logs (server.log, web.log)." 0 48
 exit 1

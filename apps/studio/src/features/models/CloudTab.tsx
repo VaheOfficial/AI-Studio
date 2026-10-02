@@ -105,7 +105,7 @@ export function CloudTab() {
       {error ? (
         <EmptyState icon={<CloudOff />} title="OpenRouter catalog unavailable" description={error.message} />
       ) : isLoading || !data ? (
-        <div className={s.grid}>
+        <div className={`${s.grid} ui-stagger`}>
           {Array.from({ length: 6 }, (_, i) => (
             <Skeleton key={i} height={212} radius={16} />
           ))}

@@ -93,7 +93,7 @@
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  animation: ui-shimmer 2s linear infinite;
+  animation: global(ui-shimmer) 2s linear infinite;
 }
 
 .result {
