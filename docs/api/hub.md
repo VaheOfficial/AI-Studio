@@ -19,6 +19,12 @@ Types: [`apps/studio/src/api/contracts/hub.ts`](../../apps/studio/src/api/contra
   transformers weights; CTranslate2; ONNX; plus a `catalog:<id>` "Studio preset" when the repo is in the curated
   catalog (installing it is the same as `POST /api/models/{catalog_id}/install`). Each has size, estimated VRAM,
   `fit`, the `runtimes` that can load it, and a `note` with honest caveats (no runtime for AWQ/MLX/ONNX, etc.).
+- A standalone GGUF language encoder tagged for image generation is classified separately when its metadata
+  identifies a decoder architecture or vision projector. `HubRepo.component` and `HubVariant.component` are
+  `text_encoder`; its variants use language runtimes and include the projector. It is not offered as an image
+  denoiser. `HubRepo.generator_repo`, when known from the publisher's documentation, links its matching image
+  weights. This handles `AtomicChat/Qwen-Image-2.1-Turbo-Uncensored-GGUF`, whose image-task tag describes the
+  pipeline it belongs to rather than the component its files contain.
 - Gated repos (the repo or its companions' base repo): the install job checks access first and fails with a
   message + link; set `hf_token` in Settings.
 - An image pipeline the image runtime can't load (its `model_index.json` names a pipeline class the installed

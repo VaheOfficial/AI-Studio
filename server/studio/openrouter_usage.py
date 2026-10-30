@@ -92,6 +92,14 @@ def with_costs(session_id: str, messages: list[AgentMessage]) -> list[AgentMessa
     return [m.model_copy(update={"cost": costs[m.id]}) if m.id in costs else m for m in messages]
 
 
+def session_cost(session_id: str) -> float:
+    """What a session's saved replies cost, as ``with_costs`` attaches it to them."""
+    row = db.query_one("SELECT COALESCE(SUM(cost), 0) AS cost FROM openrouter_usage WHERE session_id = ? "
+                       "AND cost IS NOT NULL AND message_id IN (SELECT id FROM messages WHERE session_id = ?)",
+                       (session_id, session_id))
+    return round(float(row["cost"]), 8) if row else 0.0
+
+
 def _recent(limit: int = 12) -> list[OpenRouterCharge]:
     rows = db.query("SELECT * FROM openrouter_usage ORDER BY ts DESC LIMIT ?", (limit,))
     return [OpenRouterCharge(id=r["id"], ts=r["ts"], kind=r["kind"], model=r["model"], cost=r["cost"],

@@ -23,9 +23,13 @@ from ..voice import profiles, speech
 from ..voice.profiles import VoiceError
 from ..workspace import tools as workspace_tools
 from ..workspace.state import WorkspaceError
-from . import (automation_tools, images, inventory, media_tools, memory_tools, python_tools, web_tools,
-               widget_tools)
+from . import (automation_tools, images, inventory, media_tools, memory_tools, python_tools, web_tools, widget_tools)
+from ..agents import tools as agent_capabilities
+from ..agents import advisor as agent_advisor
+from ..agents import browser_tools, collections as document_tools, composition, desktop_tools, connector_apps, documents, plugin_tools, services, file_tools, research, media_inspection
+from . import profiles as session_profiles
 from .types import ToolContext, ToolFailure, ToolOutcome, ToolSpec
+from ..agents import model_checks, monitors, channels, google_workspace, git_workspace, policies, recording, structured_output, code_review, animation_tools
 
 # Small local models tend to re-issue a side-effecting call after it succeeded.
 _DONE_HINT = "Done - do not repeat this call."
@@ -35,7 +39,7 @@ def _obj(props: dict[str, Any], required: list[str] | None = None) -> dict[str, 
     return {"type": "object", "properties": props, "required": required or [], "additionalProperties": False}
 
 
-_KIND = {"type": "string", "enum": ["text", "image", "voice", "stt", "music"]}
+_KIND = {"type": "string", "enum": ["text", "image", "voice", "stt", "music", "video"]}
 
 SPECS: list[ToolSpec] = [
     ToolSpec("system_info", "GPU, VRAM, RAM, CPU and disk status of this machine.", _obj({})),
@@ -82,24 +86,41 @@ SPECS: list[ToolSpec] = [
     *python_tools.SPECS,
     *widget_tools.SPECS,
     *automation_tools.SPECS,
+    *agent_capabilities.SPECS,
+    *agent_advisor.SPECS,
+    *browser_tools.SPECS, *document_tools.SPECS, *composition.SPECS, *desktop_tools.SPECS, *connector_apps.SPECS, *plugin_tools.SPECS,
+    *file_tools.SPECS, *research.SPECS, *media_inspection.SPECS,
+    *model_checks.SPECS,
+    *monitors.SPECS, *channels.SPECS,
+    *google_workspace.SPECS,
+    *git_workspace.SPECS,
+    *recording.SPECS,
+    *structured_output.SPECS,
+    *code_review.SPECS,
+    *animation_tools.SPECS,
 ]
 BY_NAME = {s.name: s for s in SPECS}
+DISPATCH_MODULES = (workspace_tools, media_tools, web_tools, memory_tools, python_tools, widget_tools,
+                    automation_tools, agent_capabilities, agent_advisor, browser_tools, document_tools,
+                    composition, desktop_tools, connector_apps, plugin_tools, file_tools, research,
+                    media_inspection, model_checks, monitors, channels, google_workspace, git_workspace, recording, structured_output, code_review, animation_tools)
 
 
 def connector_specs() -> list[ToolSpec]:
     """Tools of the connected MCP connectors (they come and go with Settings → Connectors)."""
-    return [ToolSpec(name, desc, schema, needs_approval=ask) for name, desc, schema, ask in connectors.manager.tool_specs()]
+    return [ToolSpec(name, desc, schema, needs_approval=ask) for name, desc, schema, ask in connectors.manager.tool_specs()] + documents.specs() + services.specs()
 
 
 def all_specs() -> list[ToolSpec]:
     """The agent's tools for a turn: the built-in ones this machine can run, plus the connectors'."""
     caps = capabilities.get()
-    usable = [s for s in SPECS if (f := capabilities.TOOL_FEATURE.get(s.name)) is None or caps.features[f].available]
+    usable = [s for s in SPECS if s.name != "start_task" and ((f := capabilities.TOOL_FEATURE.get(s.name)) is None or caps.features[f].available)]
     return [*usable, *connector_specs()]
 
 
 def _spec(name: str) -> ToolSpec | None:
-    return BY_NAME.get(name) or next((s for s in connector_specs() if s.name == name), None)
+    return (BY_NAME.get(name) or session_profiles.SPECS.get(name)
+            or next((s for s in connector_specs() if s.name == name), None))
 
 
 def needs_approval(name: str, auto_approve: list[str], args: Any = None) -> bool:
@@ -119,19 +140,26 @@ def validate_args(name: str, args: Any) -> dict[str, Any]:
         raise ToolFailure(f"Unknown tool '{name}'. Available: {', '.join(s.name for s in all_specs())}")
     if not isinstance(args, dict):
         raise ToolFailure(f"Arguments for {name} must be a JSON object")
-    props: dict[str, Any] = spec.parameters["properties"]
+    props: dict[str, Any] = spec.parameters.get("properties", {})
     missing = [k for k in spec.parameters.get("required", []) if k not in args]
     if missing:
         raise ToolFailure(f"Missing required argument(s) for {name}: {', '.join(missing)}")
     clean: dict[str, Any] = {}
     for key, value in args.items():
-        if key not in props or value is None:
-            continue  # small models often add stray keys; ignore rather than fail
+        if key not in props:
+            if not props and spec.parameters.get("additionalProperties") is not False:
+                clean[key] = value  # open object schemas from connectors retain their inputs
+            continue  # small models often add stray keys to fixed schemas
+        if value is None:
+            continue
         expected = props[key].get("type")
         if expected == "integer" and isinstance(value, (int, float, str)) and not isinstance(value, bool):
             try:
+                numeric = float(value)
+                if not numeric.is_integer():
+                    raise ValueError("fractional integer")
                 value = int(value)
-            except ValueError as exc:
+            except (ValueError, OverflowError) as exc:
                 raise ToolFailure(f"{name}.{key} must be an integer") from exc
         elif expected == "number" and isinstance(value, (int, float, str)) and not isinstance(value, bool):
             try:
@@ -152,6 +180,14 @@ def validate_args(name: str, args: Any) -> dict[str, Any]:
         if "enum" in props[key] and value not in props[key]["enum"]:
             raise ToolFailure(f"{name}.{key} must be one of {props[key]['enum']}")
         clean[key] = value
+    from jsonschema import Draft202012Validator
+    if name == 'artifact_save' and ('id' in clean) != ('version' in clean):
+        raise ToolFailure('Creating an artifact: omit BOTH id and version. Revising: use BOTH the actual returned id and current version.')
+    errors = sorted(Draft202012Validator(spec.parameters).iter_errors(clean), key=lambda error: str(error.path))
+    if errors:
+        error = errors[0]
+        field = ".".join(str(part) for part in error.path)
+        raise ToolFailure(f"Invalid arguments for {name}{'.' + field if field else ''}: {error.message}")
     return clean
 
 
@@ -207,7 +243,7 @@ async def _list_models(a: dict[str, Any]) -> ToolOutcome:
              "size_gb": round(m.size_bytes / 1e9, 2),
              **({"family": family[m.id], "recommended": m.id == ranked[0].model_id} if m.id in family else {})}
             for m in items if not a.get("kind") or m.kind == a["kind"]]
-    return ToolOutcome(True, _json(rows) if rows else "No models installed" + (f" of kind {a['kind']}" if a.get("kind") else ""))
+    return ToolOutcome(True, _json(rows) if rows else "No usable models configured on this machine" + (f" of kind {a['kind']}" if a.get("kind") else ""))
 
 
 async def _search_catalog(a: dict[str, Any]) -> ToolOutcome:
@@ -321,11 +357,29 @@ _IMPL: dict[str, Callable[[dict[str, Any]], Awaitable[ToolOutcome]]] = {
 async def execute(name: str, raw_args: Any, ctx: ToolContext) -> ToolOutcome:
     try:
         args = validate_args(name, raw_args)
+        if name == 'artifact_save':
+            from ..agents import store
+            from ..schemas_agents import ArtifactCreate
+            store.validate_artifact(ctx.session_id, ArtifactCreate(**args))
+        policies.enforce(name, args, ctx)
+        if name.startswith("document__"):
+            return await documents.call(name, args, ctx)
+        if name.startswith('api_'):
+            return await services.call(name, args, ctx)
         if connectors.SEP in name and name not in BY_NAME:
-            ok, text, pictures = await connectors.manager.call(name, args)
-            return ToolOutcome(ok, text, images=pictures if ctx.vision else [])
-        for module in (workspace_tools, media_tools, web_tools, memory_tools, python_tools, widget_tools,
-                       automation_tools):
+            ok, text, pictures, app_result = await connectors.manager.call(name, args, ctx=ctx, rich=True)
+            display = None
+            prefix = name.partition(connectors.SEP)[0]
+            source = next((d for d in connectors._all_raw() if connectors.slug(d['name']) == prefix), None)
+            live = connectors.manager._live.get(source['id']) if source else None
+            definition = next((t for t in live.tools if connectors.tool_name(prefix, t['name']) == name), None) if live else None
+            uri = ((definition.get('meta', {}).get('ui', {}).get('resourceUri') or definition.get('meta',{}).get('ui/resourceUri')) if definition else None)
+            if uri and len(json.dumps(app_result, ensure_ascii=False)) <= 1024 * 1024:
+                from ..schemas_workspace import AppDisplay
+                display = AppDisplay(connector_id=source['id'], resource_uri=uri, title=source['name'],
+                    session_id=ctx.session_id, arguments=args, result=app_result)
+            return ToolOutcome(ok, text, images=pictures if ctx.vision else [], display=display)
+        for module in (*DISPATCH_MODULES, session_profiles):
             if name in module.IMPL:
                 return await module.IMPL[name](args, ctx)
         outcome = await _IMPL[name](args)
@@ -335,6 +389,8 @@ async def execute(name: str, raw_args: Any, ctx: ToolContext) -> ToolOutcome:
         return outcome
     except TimeoutError:
         return ToolOutcome(False, f"{name} timed out")
+    except policies.PolicyStop as exc:
+        return ToolOutcome(False, f'Authorization stopped this turn: {exc}', terminal_error=True)
     except (ToolFailure, WorkspaceError, ModelError, WorkerError, VoiceError, ValueError, OSError) as exc:
         return ToolOutcome(False, f"Error: {exc}")
     except connectors.ConnectorError as exc:

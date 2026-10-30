@@ -31,8 +31,10 @@ class Message:
     is_error: bool = False
     # Images the model sees with this message (local files; providers downscale and encode them)
     images: list[Path] = field(default_factory=list)
+
     # Provider-native assistant content for exact replay inside the current turn (e.g. OpenRouter's
-    # reasoning details). Never persisted.
+    # reasoning details). Bounded state is persisted separately in the internal step transcript, scoped to
+    # the exact model; it is not part of the public AgentMessage/tool result contract.
     raw: Any = None
 
 
@@ -91,6 +93,7 @@ class ModelInfo:
 
     vision: bool = False
     context: int | None = None
+    tools: bool | None = None  # None when the endpoint does not report template capabilities
 
 
 class ProviderError(RuntimeError):
@@ -108,6 +111,8 @@ class ToolContext:
     # Asks the user a question in the chat and waits for the answer (ask_user); None outside an agent turn
     ask: Callable[[str, list[str]], Awaitable[str]] | None = None
     vision: bool = False  # the chat model can see images
+    # Nested composition uses the same dispatcher, approvals and receipt handling as ordinary calls.
+    invoke: Callable[[str, dict[str, Any]], Awaitable[ToolOutcome]] | None = None
 
 
 @dataclass
@@ -118,6 +123,7 @@ class ToolOutcome:
     display: BaseModel | None = None
     # Images for the model to look at (a screenshot, a generated picture); only sent to models that can see
     images: list[Path] = field(default_factory=list)
+    terminal_error: bool = False  # Stop this turn rather than retrying an exhausted authorization.
 
 
 class ToolFailure(Exception):

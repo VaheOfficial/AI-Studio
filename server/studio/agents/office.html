@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Grom Agents for Office</title>
+<script src="https://officeapis.public.onecdn.static.microsoft/1/office.js"></script>
+<style>body{font:14px system-ui;color:CanvasText;background:Canvas;color-scheme:light dark;margin:16px}input,button{font:inherit;box-sizing:border-box;width:100%;margin:6px 0;padding:10px}label{display:block;margin-top:12px}#status{white-space:pre-wrap}h1{font-size:22px}</style></head>
+<body><h1>Grom Agents</h1><p>This editor exposes commands to one granted conversation. Agent edits use Studio's approval controls.</p>
+<label>Document device token<input id="token" type="password" autocomplete="off"></label><label>Conversation ID<input id="sid" autocomplete="off"></label>
+<button id="connect" disabled>Connect document</button><button id="disconnect" disabled>Disconnect</button><p id="status" role="status">Waiting for Office…</p>
+<script>
+const element = id => document.getElementById(id);
+const status = message => { element('status').textContent = message; };
+const object = (properties = {}, required = []) => ({ type: 'object', properties, required, additionalProperties: false });
+const string = { type: 'string' }, boolean = { type: 'boolean' }, integer = { type: 'integer', minimum: 0 };
+const rows = { type: 'array', maxItems: 1000, items: { type: 'array', maxItems: 1000, items: {} } };
+let socket, commands = {}, hostKind;
+function command(description, parameters, execute) { return { description, parameters, execute }; }
+function wordCommands() {
+  return {
+    read_document: command('Read the current Word document', object(), () => Word.run(async context => { const body = context.document.body; body.load('text'); await context.sync(); return { text: body.text }; })),
+    read_paragraphs: command('Read Word paragraphs with their zero-based indexes and styles', object(), () => Word.run(async context => { const paragraphs = context.document.body.paragraphs; paragraphs.load('items/text,items/style'); await context.sync(); return paragraphs.items.slice(0,2000).map((paragraph,index) => ({index,text:paragraph.text,style:paragraph.style})); })),
+    append_heading: command('Append a Word heading', object({text:string,level:{type:'integer',minimum:1,maximum:4}},['text','level']), args => Word.run(async context => { const paragraph = context.document.body.insertParagraph(args.text,'End'); paragraph.styleBuiltIn = 'Heading' + args.level; await context.sync(); return {updated:true}; })),
+    format_selection: command('Format a Word selection after checking its expected text', object({expected_text:string,bold:boolean,italic:boolean,color:string,size:{type:'number',minimum:6,maximum:96}},['expected_text']), args => Word.run(async context => { const range = context.document.getSelection(); range.load('text'); await context.sync(); if(range.text !== args.expected_text) throw Error('Selection changed'); if(args.bold !== undefined)range.font.bold=args.bold;if(args.italic !== undefined)range.font.italic=args.italic;if(args.color)range.font.color=args.color;if(args.size)range.font.size=args.size;await context.sync();return {updated:true}; })),
+    insert_image: command('Append a small base64 image to Word', object({base64:{type:'string',maxLength:100000},width:{type:'number',minimum:1,maximum:500}},['base64']), args => Word.run(async context => { const picture = context.document.body.insertInlinePictureFromBase64(args.base64,'End'); if(args.width)picture.width=args.width;await context.sync();return {updated:true}; })),
+    read_selection: command('Read the current Word selection', object(), () => Word.run(async context => { const range = context.document.getSelection(); range.load('text'); await context.sync(); return { text: range.text }; })),
+    append_text: command('Append text at the end of the Word document', object({ text: string }, ['text']), args => Word.run(async context => { context.document.body.insertText(args.text, 'End'); await context.sync(); return { updated: true }; })),
+    replace_text: command('Replace one exact unique passage in Word', object({ old: string, replacement: string }, ['old','replacement']), args => Word.run(async context => {
+      if (!args.old) throw Error('The original passage cannot be empty');
+      const matches = context.document.body.search(args.old, { matchCase: true, matchWholeWord: false }); matches.load('items'); await context.sync();
+      if (matches.items.length !== 1) throw Error('The passage must occur exactly once');
+      matches.items[0].insertText(args.replacement, 'Replace'); await context.sync(); return { updated: true };
+    })),
+    replace_selection: command('Replace the selected passage after checking its expected text', object({ expected_text: string, text: string }, ['expected_text','text']), args => Word.run(async context => {
+      const range = context.document.getSelection(); range.load('text'); await context.sync(); if (range.text !== args.expected_text) throw Error('Selection changed'); range.insertText(args.text, 'Replace'); await context.sync(); return { updated: true };
+    })),
+    insert_table: command('Append a rectangular text table to Word', object({ rows }, ['rows']), args => Word.run(async context => {
+      if (!args.rows.length || !args.rows[0].length || args.rows.some(row => row.length !== args.rows[0].length) || args.rows.length * args.rows[0].length > 10000) throw Error('Provide at most 10,000 rectangular cells');
+      context.document.body.insertTable(args.rows.length, args.rows[0].length, 'End', args.rows.map(row => row.map(value => String(value ?? '')))); await context.sync(); return { updated: true };
+    })),
+  };
+}
+async function excelRange(args, action) {
+  return Excel.run(async context => {
+    const sheet = context.workbook.worksheets.getItem(args.sheet), range = sheet.getRange(args.address);
+    range.load('rowCount,columnCount'); await context.sync(); if (range.rowCount * range.columnCount > 10000) throw Error('Range exceeds 10,000 cells');
+    return action(context, range);
+  });
+}
+function excelCommands() {
+  const target = { sheet: string, address: string };
+  return {
+    list_sheets: command('List the workbook sheets', object(), () => Excel.run(async context => { const sheets = context.workbook.worksheets; sheets.load('items/name'); await context.sync(); return sheets.items.map(sheet => ({ name: sheet.name })); })),
+    read_range: command('Read cell values and formulas from an Excel range', object(target, ['sheet','address']), args => excelRange(args, async (context, range) => { range.load('values,formulas,address,numberFormat'); await context.sync(); return { address: range.address, values: range.values, formulas: range.formulas, number_format: range.numberFormat }; })),
+    write_range: command('Write rectangular values to an Excel range', object({ ...target, values: rows, expected_values: rows }, ['sheet','address','values']), args => excelRange(args, async (context, range) => {
+      if (args.values.length !== range.rowCount || args.values.some(row => row.length !== range.columnCount)) throw Error('Value dimensions must match the range');
+      if (args.expected_values) { range.load('values'); await context.sync(); if (JSON.stringify(range.values) !== JSON.stringify(args.expected_values)) throw Error('Cells changed'); }
+      range.values = args.values; await context.sync(); return { updated: true };
+    })),
+    set_formulas: command('Set formulas in an Excel range and calculate', object({ ...target, formulas: rows, expected_formulas:rows }, ['sheet','address','formulas']), args => excelRange(args, async (context, range) => {
+      if (args.formulas.length !== range.rowCount || args.formulas.some(row => row.length !== range.columnCount)) throw Error('Formula dimensions must match the range');
+      if(args.expected_formulas){range.load('formulas');await context.sync();if(JSON.stringify(range.formulas)!==JSON.stringify(args.expected_formulas))throw Error('Formulas changed');}
+      range.formulas = args.formulas; context.workbook.application.calculate('Full'); await context.sync(); range.load('values'); await context.sync(); return { values: range.values };
+    })),
+    format_range: command('Apply font, fill and number formatting to an Excel range', object({ ...target, bold: boolean, italic: boolean, fill: string, number_format: string }, ['sheet','address']), args => excelRange(args, async (context, range) => {
+      if (args.bold !== undefined) range.format.font.bold = args.bold; if (args.italic !== undefined) range.format.font.italic = args.italic;
+      if (args.fill) range.format.fill.color = args.fill; if (args.number_format) range.numberFormat = Array.from({ length: range.rowCount }, () => Array(range.columnCount).fill(args.number_format)); await context.sync(); return { updated: true };
+    })),
+    add_sheet: command('Add a workbook sheet', object({ name: string }, ['name']), args => Excel.run(async context => { context.workbook.worksheets.add(args.name); await context.sync(); return { created: args.name }; })),
+    add_table: command('Create an Excel table from a range', object({ ...target, headers: boolean }, ['sheet','address']), args => excelRange(args, async (context, range) => { const table = range.worksheet.tables.add(range, args.headers !== false); table.load('name'); await context.sync(); return { name: table.name }; })),
+    sort_range: command('Sort an Excel range using a zero-based key column', object({ ...target, column: integer, ascending: boolean, headers: boolean }, ['sheet','address','column']), args => excelRange(args, async (context, range) => { if (args.column >= range.columnCount) throw Error('Sort key is outside the range'); range.sort.apply([{ key: args.column, ascending: args.ascending !== false }], false, args.headers !== false); await context.sync(); return { updated: true }; })),
+    add_chart: command('Add a column, line or pie chart from an Excel range', object({...target,type:{type:'string',enum:['ColumnClustered','Line','Pie']},title:string},['sheet','address','type']), args => excelRange(args, async(context,range) => { const chart = range.worksheet.charts.add(args.type,range,'Auto'); if(args.title){chart.title.text=args.title;chart.title.visible=true;}chart.load('id,name');await context.sync();return {id:chart.id,name:chart.name}; })),
+    clear_contents: command('Clear an Excel range after checking its expected values', object({...target,expected_values:rows},['sheet','address','expected_values']), args => excelRange(args,async(context,range) => {range.load('values');await context.sync();if(JSON.stringify(range.values)!==JSON.stringify(args.expected_values))throw Error('Cells changed');range.clear('Contents');await context.sync();return {updated:true};})),
+    rename_sheet: command('Rename an existing workbook sheet', object({sheet:string,name:string},['sheet','name']), args => Excel.run(async context => {const sheet = context.workbook.worksheets.getItem(args.sheet);sheet.name=args.name;await context.sync();return {name:args.name};})),
+    calculate: command('Recalculate the Excel workbook', object(), () => Excel.run(async context => { context.workbook.application.calculate('Full'); await context.sync(); return { recalculated: true }; })),
+  };
+}
+function powerpointCommands() {
+  return {
+    list_slides: command('List the PowerPoint slides and their IDs', object(), () => PowerPoint.run(async context => { const slides = context.presentation.slides; slides.load('items/id'); await context.sync(); return slides.items.map((slide, index) => ({ id: slide.id, index })); })),
+    read_slide: command('Read text boxes and geometry on a PowerPoint slide', object({ slide_id: string }, ['slide_id']), args => PowerPoint.run(async context => {
+      const shapes = context.presentation.slides.getItem(args.slide_id).shapes; shapes.load('items/id,items/type,items/left,items/top,items/width,items/height'); await context.sync();
+      const readable = shapes.items.filter(shape => ['TextBox','GeometricShape'].includes(shape.type)); readable.forEach(shape => shape.textFrame.textRange.load('text')); await context.sync();
+      return readable.map(shape => ({ id: shape.id, text: shape.textFrame.textRange.text, left: shape.left, top: shape.top, width: shape.width, height: shape.height }));
+    })),
+    add_slide: command('Add an empty slide to PowerPoint', object(), () => PowerPoint.run(async context => { const slide = context.presentation.slides.add(); slide.load('id'); await context.sync(); return { id: slide.id }; })),
+    add_text_box: command('Add a text box to a PowerPoint slide', object({ slide_id: string, text: string, left: { type:'number' }, top: { type:'number' }, width: { type:'number',minimum:1 }, height: { type:'number',minimum:1 } }, ['slide_id','text','left','top','width','height']), args => PowerPoint.run(async context => { const shape = context.presentation.slides.getItem(args.slide_id).shapes.addTextBox(args.text, { left: args.left, top: args.top, width: args.width, height: args.height }); shape.load('id'); await context.sync(); return { id: shape.id }; })),
+    add_shape: command('Add a rectangle, rounded rectangle, ellipse or arrow to PowerPoint', object({slide_id:string,type:{type:'string',enum:['Rectangle','RoundRectangle','Ellipse','RightArrow']},left:{type:'number'},top:{type:'number'},width:{type:'number',minimum:1},height:{type:'number',minimum:1},fill:string,text:string},['slide_id','type','left','top','width','height']), args => PowerPoint.run(async context => {const shape=context.presentation.slides.getItem(args.slide_id).shapes.addGeometricShape(args.type,{left:args.left,top:args.top,width:args.width,height:args.height});if(args.fill)shape.fill.setSolidColor(args.fill);if(args.text)shape.textFrame.textRange.text=args.text;shape.load('id');await context.sync();return {id:shape.id};})),
+    format_shape_text: command('Format PowerPoint shape text after checking its expected contents', object({slide_id:string,shape_id:string,expected_text:string,bold:boolean,italic:boolean,color:string,size:{type:'number',minimum:6,maximum:96}},['slide_id','shape_id','expected_text']), args => PowerPoint.run(async context => {const range=context.presentation.slides.getItem(args.slide_id).shapes.getItem(args.shape_id).textFrame.textRange;range.load('text');await context.sync();if(range.text!==args.expected_text)throw Error('Shape text changed');if(args.bold!==undefined)range.font.bold=args.bold;if(args.italic!==undefined)range.font.italic=args.italic;if(args.color)range.font.color=args.color;if(args.size)range.font.size=args.size;await context.sync();return {updated:true};})),
+    move_shape: command('Move and resize a PowerPoint shape after verifying its geometry', object({slide_id:string,shape_id:string,expected_geometry:object({left:{type:'number'},top:{type:'number'},width:{type:'number'},height:{type:'number'}},['left','top','width','height']),left:{type:'number'},top:{type:'number'},width:{type:'number',minimum:1},height:{type:'number',minimum:1}},['slide_id','shape_id','expected_geometry','left','top','width','height']), args => PowerPoint.run(async context => {const shape=context.presentation.slides.getItem(args.slide_id).shapes.getItem(args.shape_id);shape.load('left,top,width,height');await context.sync();for(const key of ['left','top','width','height'])if(Math.abs(shape[key]-args.expected_geometry[key])>0.01)throw Error('Shape geometry changed');for(const key of ['left','top','width','height'])shape[key]=args[key];await context.sync();return {updated:true};})),
+    replace_shape_text: command('Replace a text box after verifying its expected contents', object({ slide_id: string, shape_id: string, expected_text: string, text: string }, ['slide_id','shape_id','expected_text','text']), args => PowerPoint.run(async context => {
+      const range = context.presentation.slides.getItem(args.slide_id).shapes.getItem(args.shape_id).textFrame.textRange; range.load('text'); await context.sync(); if (range.text !== args.expected_text) throw Error('Shape text changed'); range.text = args.text; await context.sync(); return { updated: true };
+    })),
+  };
+}
+Office.onReady(info => {
+  hostKind = info.host;
+  const supported = Office.context.requirements.isSetSupported.bind(Office.context.requirements);
+  if (info.host === Office.HostType.Word && supported('WordApi','1.3')) commands = wordCommands();
+  if (info.host === Office.HostType.Excel && supported('ExcelApi','1.9')) commands = excelCommands();
+  if (info.host === Office.HostType.PowerPoint && supported('PowerPointApi','1.4')) commands = powerpointCommands();
+  element('connect').disabled = !Object.keys(commands).length;
+  status(Object.keys(commands).length ? 'Ready. Create a document-scoped device token in Agents → Connections.' : 'This Office version does not support the required document APIs.');
+});
+element('connect').onclick = () => {
+  socket?.close(); const token = element('token').value.trim(), sessionId = element('sid').value.trim();
+  if (!token || !sessionId) { status('Enter a device token and its granted conversation ID'); return; }
+  const connection = socket = new WebSocket('wss://' + location.host + '/documents');
+  let chain = Promise.resolve();
+  connection.onopen = () => connection.send(JSON.stringify({ token, session_id: sessionId, title: 'Office document', kind: hostKind, tools: Object.entries(commands).map(([name, command]) => ({ name, description: command.description, parameters: command.parameters })) }));
+  connection.onmessage = message => {
+    if (socket !== connection) return;
+    const data = JSON.parse(message.data);
+    if (data.type === 'connected') { element('token').value = ''; element('connect').disabled = true; element('disconnect').disabled = false; status('Connected. Agent edits appear in Studio for approval.'); return; }
+    if (data.type !== 'command') return;
+    chain = chain.then(async () => {
+      if (socket !== connection || connection.readyState !== WebSocket.OPEN) return;
+      try { const handler = commands[data.name]; if (!handler) throw Error('Unsupported document command'); const result = await handler.execute(data.args); if (socket === connection && connection.readyState === WebSocket.OPEN) connection.send(JSON.stringify({ type:'result', id:data.id, ok:true, result })); }
+      catch (error) { if (socket === connection && connection.readyState === WebSocket.OPEN) connection.send(JSON.stringify({ type:'result', id:data.id, ok:false, error:error.message })); }
+    });
+  };
+  connection.onclose = () => { if (socket !== connection) return; element('connect').disabled = false; element('disconnect').disabled = true; status('Disconnected'); };
+  connection.onerror = () => status('Gateway connection failed. Check HTTPS trust and the device grant.');
+};
+element('disconnect').onclick = () => socket?.close();
+window.addEventListener('beforeunload', () => socket?.close());
+</script></body></html>

@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { AriaAttributes, ReactNode } from 'react'
 import { Select as S } from 'radix-ui'
 import { Check, ChevronDown } from 'lucide-react'
 import { cn } from '../../lib/cn'
@@ -17,7 +17,7 @@ export interface SelectGroup<V extends string = string> {
   options: SelectOption<V>[]
 }
 
-export interface SelectProps<V extends string = string> {
+export interface SelectProps<V extends string = string> extends AriaAttributes {
   value: V | undefined
   onValueChange: (value: V) => void
   options: SelectOption<V>[] | SelectGroup<V>[]
@@ -44,6 +44,7 @@ export function Select<V extends string = string>({
   disabled,
   className,
   renderValue,
+  ...ariaProps
 }: SelectProps<V>) {
   const groups: SelectGroup<V>[] = isGrouped(options) ? options : [{ label: '', options }]
   const flat = groups.flatMap((g) => g.options)
@@ -51,7 +52,7 @@ export function Select<V extends string = string>({
 
   return (
     <S.Root value={value} onValueChange={(v) => onValueChange(v as V)} disabled={disabled}>
-      <S.Trigger id={id} className={cn(s.trigger, s[size], className)}>
+      <S.Trigger {...ariaProps} id={id} className={cn(s.trigger, s[size], className)}>
         <span className={s.value}>
           {renderValue ? (
             renderValue(selected)

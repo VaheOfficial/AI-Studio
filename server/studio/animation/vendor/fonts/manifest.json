@@ -1,0 +1,17 @@
+{
+  "family": "Oswald",
+  "license": "SIL Open Font License 1.1",
+  "source": "https://github.com/google/fonts/tree/main/ofl/oswald",
+  "files": {
+    "OFL-Oswald.txt": {
+      "source_name": "OFL.txt",
+      "git_blob_sha": "4d4e319b6114be0174e6de5d8090408f78dc65b8",
+      "sha256": "0fd731a904b729a4e02eaf5e8ebd06783edd9abe400e8882760160230675b652"
+    },
+    "Oswald.ttf": {
+      "source_name": "Oswald[wght].ttf",
+      "git_blob_sha": "d1a3b9cb1325bf20b3a06ef9849d21c411212a3b",
+      "sha256": "5b38c246e255a12f5712d640d56bcced0472466fc68983d2d0410ec0457c2817"
+    }
+  }
+}

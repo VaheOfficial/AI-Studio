@@ -60,6 +60,7 @@ export const HubResultCard = forwardRef<HTMLDivElement, HubResultCardProps>(func
         {result.description && <p className={s.desc}>{result.description}</p>}
 
         <div className={s.badges}>
+          {result.component === 'text_encoder' && <Badge size="sm">Text encoder</Badge>}
           {result.gated && (
             <Tooltip content="Accept the terms on huggingface.co and set an HF token in Settings to download.">
               <span>

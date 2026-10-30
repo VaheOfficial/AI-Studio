@@ -27,6 +27,11 @@ _INFO_TTL_S = 600
 _SORT = {"downloads": "downloads", "trending": "trending_score", "likes": "likes", "updated": "last_modified"}
 _EXPAND = ["downloads", "likes", "gated", "pipeline_tag", "library_name", "tags", "lastModified"]
 
+# The publisher separates this encoder from the matching denoiser repository.
+_ENCODER_GENERATORS = {
+    'AtomicChat/Qwen-Image-2.1-Turbo-Uncensored-GGUF': 'AtomicChat/Qwen-Image-2.1-Turbo-GGUF',
+}
+
 
 class HubError(Exception):
     def __init__(self, message: str, status: int = 502) -> None:
@@ -57,11 +62,12 @@ def _license(tags: list[str]) -> str | None:
 def _result(m: ModelInfo) -> HubSearchResult:
     tags = list(m.tags or [])
     author, _, name = m.id.rpartition("/")
+    component = 'text_encoder' if m.id in _ENCODER_GENERATORS else None
     return HubSearchResult(
-        id=m.id, source="hf", name=name, author=author or None, kind=variants.kind_of(m.pipeline_tag, tags),
+        id=m.id, source="hf", name=name, author=author or None, kind='text' if component else variants.kind_of(m.pipeline_tag, tags),
         task=m.pipeline_tag, downloads=m.downloads, likes=m.likes,
         updated_at=m.last_modified.isoformat() if m.last_modified else None, license=_license(tags),
-        gated=bool(m.gated), formats=variants.formats_from_tags(tags), tags=[],
+        gated=bool(m.gated), formats=variants.formats_from_tags(tags), tags=[], component=component,
     )
 
 
@@ -249,7 +255,7 @@ def _variant(repo: str, files: dict[str, int], d: variants.Draft, base: tuple[st
     return HubVariant(
         id=d.id, ref=f"hf:{repo}#{d.id}", label=d.label, format=d.format, quant=d.quant, kind=d.kind, files=d.files,
         size_bytes=d.size, companions=companions, vram_gb=vram, fit=catalog.compute_fit(vram, runtime),
-        encoder_fits=encoder_fits, runtimes=runtimes,
+        encoder_fits=encoder_fits, runtimes=runtimes, component=d.component,
         note=" ".join(notes) or None, installed_id=_installed_match(repo, d.files, d.format, d.quant, installed),
     )
 
@@ -323,7 +329,12 @@ def repo(repo_id: str) -> HubRepo:
     kind = variants.kind_of(i.pipeline_tag, tags)
     card = i.card_data.to_dict() if i.card_data else {}
     base_models = _as_list(card.get("base_model"))
-    drafts = variants.group(files, kind, tags)
+    gguf = getattr(i, 'gguf', None) or {}
+    architecture = gguf.get('architecture') if isinstance(gguf, dict) else None
+    component = variants.component_of(files, kind, tags, architecture)
+    drafts = variants.group(files, kind, tags, component)
+    if component == 'text_encoder':
+        kind = 'text'
     installed = db.list_installed()
     out = [_preset_variant(s, files, {m.id for m in installed})
            for s in catalog.SPECS if s.source.type == "hf" and s.source.repo == repo_id]
@@ -341,4 +352,5 @@ def repo(repo_id: str) -> HubRepo:
         tags=[t for t in tags if ":" not in t][:12], summary=_summary(repo_id), url=f"https://huggingface.co/{repo_id}",
         files=[HubFile(path=p, size=s) for p, s in sorted(files.items())], variants=out, text_encoder=text_encoder,
         related=_related(repo_id, name, kind, any(d.format == "gguf" for d in drafts)),
+        component=component, generator_repo=_ENCODER_GENERATORS.get(repo_id) if component else None,
     )

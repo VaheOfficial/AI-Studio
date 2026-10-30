@@ -38,6 +38,7 @@ export interface HubSearchResult {
   /** Ollama: capabilities ("tools", "vision", "thinking") and parameter sizes ("8b"). */
   tags: string[]
   description?: string
+  component?: 'text_encoder'
 }
 
 export interface HubFile {
@@ -98,6 +99,7 @@ export interface HubVariant {
   recommended?: boolean
   /** InstalledModel id when this variant is already installed. */
   installed_id?: string
+  component?: 'text_encoder'
 }
 
 export interface HubRepo {
@@ -106,6 +108,8 @@ export interface HubRepo {
   name: string
   author?: string
   kind?: ModelKind
+  component?: 'text_encoder'
+  generator_repo?: string
   task?: string
   license?: string
   gated: boolean

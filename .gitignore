@@ -7,6 +7,8 @@ reference/
 server/.venv/
 __pycache__/
 .vite
+.pnpm-store/
+.codex-remote-attachments/
 apps/desktop/vendor/
 apps/desktop/release/
 apps/desktop/src/shell-id.json

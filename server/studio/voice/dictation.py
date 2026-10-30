@@ -43,7 +43,9 @@ def _rms(frame: bytes) -> float:
 
 
 class _Session:
-    def __init__(self, ws: WebSocket, model: InstalledModel, language: str | None) -> None:
+    def __init__(self, ws: WebSocket, model: InstalledModel, language: str | None, authorize=None) -> None:
+        self.authorize = authorize
+        self.queued_bytes = 0
         self.ws = ws
         self.model = model
         self.language = language
@@ -61,9 +63,13 @@ class _Session:
         self.wake = asyncio.Event()
 
     async def send(self, msg: BaseModel) -> None:
+        if self.authorize:
+            self.authorize()
         await self.ws.send_json(msg.model_dump())
 
     async def _decode(self, pcm: bytes) -> str:
+        if self.authorize:
+            self.authorize()
         result = await asyncio.to_thread(
             runtimes.request, self.model.runtime, "POST", "/transcribe",
             {"pcm16": base64.b64encode(pcm).decode(), "language": self.language}, 120)
@@ -76,8 +82,16 @@ class _Session:
                 if msg["type"] == "websocket.disconnect":
                     self.closed = True
                     return
+                if self.authorize:
+                    self.authorize()
                 data = msg.get("bytes")
                 if data:
+                    if len(data) % 2 or len(data) > _BYTES_PER_S or self.queued_bytes + len(data) > _BYTES_PER_S * 30:
+                        self.closed = True
+                        await self.send(DictationError(message="Audio input exceeded its buffering limit"))
+                        await self.ws.close(code=1009)
+                        return
+                    self.queued_bytes += len(data)
                     self.frames.append(data)
                     self.wake.set()
                 elif data is not None or msg.get("text") == "EOF":
@@ -92,7 +106,9 @@ class _Session:
             await self.wake.wait()
             self.wake.clear()
             while self.frames and not self.closed:
-                await self.feed(self.frames.popleft())
+                frame = self.frames.popleft()
+                self.queued_bytes -= len(frame)
+                await self.feed(frame)
             if self.eof and not self.frames:
                 await self.finish()
                 return
@@ -139,8 +155,11 @@ class _Session:
         await self.send(DictationFinal(text=summary, final_kind="summary", duration_s=round(self.total_s, 2)))
 
 
-async def run(ws: WebSocket, model_id: str | None, language: str | None) -> None:
-    await ws.accept()
+async def run(ws: WebSocket, model_id: str | None, language: str | None, *, accepted=False, authorize=None) -> None:
+    if not accepted:
+        await ws.accept()
+    if authorize:
+        authorize()
     try:
         model = models.get(model_id) if model_id else profiles.stt_model()
         if model is None or model.kind != "stt" or model.runtime != "faster-whisper":
@@ -150,13 +169,20 @@ async def run(ws: WebSocket, model_id: str | None, language: str | None) -> None
             return
         await ws.send_json(DictationStatus(stage="loading", model_id=model.id).model_dump())
         await asyncio.to_thread(models.ensure_loaded, model.id)
-        session = _Session(ws, model, language)
+        session = _Session(ws, model, language, authorize)
         await session.send(DictationStatus(stage="ready", model_id=model.id))
         receiver = asyncio.create_task(session.receive())
+        processor = asyncio.create_task(session.process())
         try:
-            await session.process()
+            done, _ = await asyncio.wait({receiver, processor}, return_when=asyncio.FIRST_COMPLETED)
+            for task in done:
+                task.result()
+            if not processor.done() and not session.closed:
+                await processor
         finally:
             receiver.cancel()
+            processor.cancel()
+            await asyncio.gather(receiver, processor, return_exceptions=True)
         if session.eof:
             await ws.close()
     except WebSocketDisconnect:

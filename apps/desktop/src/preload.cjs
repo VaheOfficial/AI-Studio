@@ -4,6 +4,16 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
 contextBridge.exposeInMainWorld('desktop', {
+  window: {
+    platform: process.platform,
+    command: (command) => ipcRenderer.send('desktop:window-command', command),
+    getState: () => ipcRenderer.invoke('desktop:window-state'),
+    onState: (handler) => {
+      const listener = (_event, state) => handler(state)
+      ipcRenderer.on('desktop:window-state', listener)
+      return () => ipcRenderer.removeListener('desktop:window-state', listener)
+    },
+  },
   onStatus: (handler) => ipcRenderer.on('desktop:status', (_event, status) => handler(status)),
   onError: (handler) => ipcRenderer.on('desktop:error', (_event, error) => handler(error)),
   retry: () => ipcRenderer.send('desktop:retry'),

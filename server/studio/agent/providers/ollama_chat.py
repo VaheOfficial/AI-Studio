@@ -74,6 +74,13 @@ class OllamaProvider(Provider):
         messages = await asyncio.to_thread(self._messages, system, history)  # encodes images
         body: dict[str, Any] = {"model": self.model, "messages": messages, "stream": True,
                                 "options": {"num_ctx": ctx}}
+        if self.output_limit is not None:
+            body['options']['num_predict'] = self.output_limit
+        if self.response_schema is not None:
+            if tools:
+                raise ProviderError('Schema-constrained final output cannot run tools in the same request')
+            body['format'] = self.response_schema
+            body['options']['temperature'] = 0
         if tools:
             if "tools" not in caps:
                 raise ProviderError(f"{self.model} does not support tool calling in Ollama; switch the session to "

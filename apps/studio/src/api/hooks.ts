@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from '@studio/ui'
 import { api } from './client'
 import { qk } from './keys'
@@ -14,6 +14,7 @@ import type {
   InstalledModel,
   Job,
   Memory,
+  MessagePage,
   MessageRef,
   ModelKind,
   ModelPatch,
@@ -60,11 +61,44 @@ export const useChatModels = () =>
 export const useSessions = () =>
   useQuery({ queryKey: qk.sessions, queryFn: () => api.get<AgentSession[]>('/agent/sessions') })
 
-export const useSession = (id: string | undefined) =>
-  useQuery({
+/**
+ * A chat as the chat view shows it: its latest page of messages first, then every message from the first one it
+ * holds (so a refetch after a reply keeps what is on the page and adds what came after). Earlier pages:
+ * `useOlderMessages`.
+ */
+export function useSession(id: string | undefined) {
+  const qc = useQueryClient()
+  return useQuery({
     queryKey: qk.session(id ?? ''),
+    queryFn: () => {
+      const from = qc.getQueryData<AgentSession>(qk.session(id ?? ''))?.messages?.[0]?.id
+      return api.get<AgentSession>(`/agent/sessions/${id}?${from ? `from=${encodeURIComponent(from)}` : 'limit=40'}`)
+    },
+    enabled: !!id,
+  })
+}
+
+/** A whole transcript at once (short, finished conversations). */
+export const useSessionTranscript = (id: string | undefined) =>
+  useQuery({
+    queryKey: [...qk.session(id ?? ''), 'all'],
     queryFn: () => api.get<AgentSession>(`/agent/sessions/${id}`),
     enabled: !!id,
+  })
+
+/**
+ * The pages before `before` (the first message `useSession` holds), newest page first. Nothing is fetched until
+ * `wanted`: most chats are read at their end.
+ */
+export const useOlderMessages = (id: string | undefined, before: string | undefined, wanted: boolean) =>
+  useInfiniteQuery({
+    queryKey: qk.olderMessages(id ?? '', before ?? ''),
+    queryFn: ({ pageParam }) =>
+      api.get<MessagePage>(`/agent/sessions/${id}/messages?before=${encodeURIComponent(pageParam)}`),
+    initialPageParam: before ?? '',
+    getNextPageParam: (last) => (last.has_older ? last.messages[0]?.id : undefined),
+    enabled: !!id && !!before && wanted,
+    staleTime: Infinity, // earlier messages do not change; a rewind starts from a new `before`
   })
 
 /* ------------------------------ mutations ------------------------------ */

@@ -27,12 +27,19 @@ dependencies = [
     "pillow>=10.0",
     "trafilatura>=2.0",
     # Connectors: the agent talks to any MCP server (local programs over stdio, remote ones over HTTP).
-    "mcp>=1.9",
+    "mcp>=2.2",
     # HTTPS verified against the operating system's certificate store, not only the bundled CA list.
     "truststore>=0.10",
+    "PyYAML>=6.0",
+    "cryptography>=43",
+    "pywebpush>=2.2",
+    "jsonschema>=4.23",
+    "regex>=2024.11.6",
+    "keyring>=25; sys_platform == 'darwin'",
 ]
 
 [project.optional-dependencies]
+desktop = ["pyautogui>=0.9.54; sys_platform != 'win32'"]
 # WebSocket client for scripted checks against /api/ws (the server itself gets it via uvicorn[standard]).
 dev = [
     "websockets>=13",

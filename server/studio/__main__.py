@@ -7,6 +7,7 @@ the workers and model servers it started) never outlives the window - not even w
 from __future__ import annotations
 
 import os
+import sys
 import threading
 from typing import BinaryIO
 
@@ -48,6 +49,9 @@ def _exit_with_parent(server: uvicorn.Server, pipe: BinaryIO) -> None:
 
 
 def main() -> None:
+    if "--service" in sys.argv:
+        os.environ["STUDIO_SERVICE"] = "1"
+        os.environ["STUDIO_WATCH_PARENT"] = "0"
     # Open WebSockets and streams would hold a graceful shutdown forever; after a few seconds they are cancelled
     # and the app's own shutdown (saving turns, stopping workers) runs
     server = uvicorn.Server(uvicorn.Config("studio.main:app", host=config.HOST, port=config.PORT, log_level="info",

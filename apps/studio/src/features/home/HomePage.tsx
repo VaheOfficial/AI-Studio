@@ -65,7 +65,7 @@ export default function HomePage() {
 
   const go = () => {
     if (!prompt.trim()) return
-    navigate('/chat', { state: { prompt: prompt.trim() } })
+    navigate('/agents/chat', { state: { prompt: prompt.trim() } })
   }
 
   return (
@@ -185,21 +185,21 @@ function ChatTile({ ready }: { ready: string }) {
   const { data: sessions = [] } = useSessions()
   return (
     <Card spotlight tint={KINDS.text.hue} padding="none" className={s.card} style={hueOf('text')}>
-      <Link to="/chat" className={s.headLink}>
+      <Link to="/agents/chat" className={s.headLink}>
         <TileHead area="text" ready={ready} />
       </Link>
       <p className={s.blurb}>{AREAS.text.blurb}</p>
       <div className={s.rows}>
         {sessions.length > 0
           ? sessions.slice(0, 3).map((c) => (
-              <Link key={c.id} to={`/chat/${c.id}`} className={s.row}>
+              <Link key={c.id} to={`/agents/chat/${c.id}`} className={s.row}>
                 <MessageSquareText />
                 <span className={s.rowText}>{c.title || 'Untitled'}</span>
                 <span className={s.rowMeta}>{timeAgo(c.updated_at)}</span>
               </Link>
             ))
           : STARTERS.map((prompt) => (
-              <button key={prompt} type="button" className={s.row} onClick={() => navigate('/chat', { state: { prompt } })}>
+              <button key={prompt} type="button" className={s.row} onClick={() => navigate('/agents/chat', { state: { prompt } })}>
                 <Plus />
                 <span className={s.rowText}>{prompt}</span>
               </button>

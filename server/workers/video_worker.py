@@ -46,7 +46,7 @@ class VideoWorker(Worker):
         if torch.cuda.is_available():
             # Windows' CUDA sysmem fallback would let an oversized allocation spill into system RAM, stalling the
             # whole machine; capped at the card's own memory it fails fast with an out-of-memory error instead
-            torch.cuda.set_per_process_memory_fraction(0.98)
+            torch.cuda.set_per_process_memory_fraction(0.90)
 
     # ------------------------------- loading -------------------------------
 
@@ -212,6 +212,29 @@ class VideoWorker(Worker):
             self.decoder.to("cpu")
             free_cuda()
 
+    def _anchor_ltx_start(self, pipe: Any, latents: Any, image: Any, width: int, height: int) -> Any:
+        """Replace the upscaled opening latent with the source encoded at the refinement resolution."""
+        from diffusers.pipelines.ltx2.utils import apply_image_conditioning_crf, resolve_default_image_crf
+        from PIL import Image
+
+        self.progress.message = "Encoding the high-resolution image reference"
+        reference = _cover(image, width, height)
+        crf = resolve_default_image_crf(pipe.text_encoder)
+        if crf:
+            reference = Image.fromarray(apply_image_conditioning_crf(np.array(reference), crf))
+        tensor = pipe.video_processor.preprocess(reference, height=height, width=width)
+        tensor = tensor.to(device=pipe._execution_device, dtype=pipe.vae.dtype)
+        try:
+            anchor = pipe.vae.encode(tensor.unsqueeze(2)).latent_dist.mode()
+            if anchor.shape[:2] != latents.shape[:2] or anchor.shape[2] != 1 or anchor.shape[-2:] != latents.shape[-2:]:
+                raise BadRequest("High-resolution image reference does not match the upscaled video latent.")
+            latents[:, :, :1] = anchor.to(device=latents.device, dtype=latents.dtype)
+        finally:
+            pipe.vae.to("cpu")
+            free_cuda()
+        log("Re-injected the opening image at refinement resolution")
+        return latents
+
     # ------------------------------ generation ------------------------------
 
     def generate(self, req: dict[str, Any]) -> dict[str, Any]:
@@ -301,18 +324,58 @@ class VideoWorker(Worker):
         if image is not None:
             kw1["image"] = _cover(image, w1, h1)
         final_latent = two_stage or diffusion
-        latents, audio = first(**kw1, output_type="latent" if final_latent else "np")
+        # Report the active stage before its first denoising callback: large initial forwards can otherwise
+        # leave the UI saying "Encoding the prompt" while the denoiser is already running.
+        denoising_started = False
+
+        def stage_start(name: str, active: Any = first):
+            def report(_module: Any, _inputs: Any) -> None:
+                nonlocal denoising_started
+                if name == "Denoising" and not denoising_started:
+                    # Fixed frame counts skip the duration head, so its chained hook never offloads the
+                    # 6 GB connectors. I2V also encodes its image through the VAE before the transformer,
+                    # although the generic offload sequence lists the VAE after it. Release all finished
+                    # components explicitly before Accelerate moves the denoiser onto the card.
+                    for component in active.components.values():
+                        if isinstance(component, torch.nn.Module) and component is not active.transformer:
+                            if any(parameter.device.type == "cuda" for parameter in component.parameters()):
+                                component.to("cpu")
+                    free_cuda()
+                    denoising_started = True
+                if self.progress.step == 0:
+                    self.progress.message = name
+                    log(f"{name}: {_gib(torch.cuda.memory_allocated())} GiB allocated")
+            return report
+
+        handles = [first.text_encoder.register_forward_pre_hook(stage_start("Encoding the prompt")),
+                   first.transformer.register_forward_pre_hook(stage_start("Denoising"))]
+        try:
+            latents, audio = first(**kw1, output_type="latent" if final_latent else "np")
+        finally:
+            for handle in handles:
+                handle.remove()
         if two_stage:
             upscaled = self._upsample(latents)
             count = (upscaled.shape[2] - 1) * self.pipe.vae_temporal_compression_ratio + 1
-            refine = self._pipe_for("t2v")
+            refine = self._pipe_for(mode)
+            if image is not None:
+                upscaled = self._anchor_ltx_start(refine, upscaled, image, width, height)
             kw2 = {**common, "width": width, "height": height, "num_frames": count, "latents": upscaled,
                    "audio_latents": audio, "sigmas": STAGE_2_DISTILLED_SIGMA_VALUES,
                    "noise_scale": STAGE_2_DISTILLED_SIGMA_VALUES[0],
                    "callback_on_step_end": self._on_step(stage2, stage1, stage1 + stage2)}
             kw2.pop("min_seconds", None)
             kw2.pop("max_seconds", None)
-            latents, audio = refine(**kw2, output_type="latent" if diffusion else "np")
+            if image is not None:
+                kw2["image"] = _cover(image, width, height)
+            denoising_started = False
+            handles = [refine.text_encoder.register_forward_pre_hook(stage_start("Encoding the prompt", refine)),
+                       refine.transformer.register_forward_pre_hook(stage_start("Denoising", refine))]
+            try:
+                latents, audio = refine(**kw2, output_type="latent" if diffusion else "np")
+            finally:
+                for handle in handles:
+                    handle.remove()
         if not final_latent or (two_stage and not diffusion):
             return latents[0], audio[0]
         # Latent output for the diffusion decoder: decode the video with it and the audio ourselves

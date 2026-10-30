@@ -10,7 +10,7 @@ headless on a persistent profile. A headless browser says so in its user agent, 
 challenge, an empty page or wrong results.
 
 Ported from OpenMuse ``apps/worker/src/browser.ts`` (viewport 1280×800, per-session serial queue, dialogs
-dismissed, popups folded into the session page, fixed ``innerText`` read) with their polling screenshot
+dismissed, conversation-owned popup tabs, fixed ``innerText`` read) with their polling screenshot
 console replaced by a CDP ``Page.startScreencast`` JPEG stream to watching WebSocket clients and user
 takeover forwarded as input events.
 """
@@ -138,7 +138,7 @@ class BrowserManager:
         for channel in ("msedge", "chrome", None):
             try:
                 ctx = await self._pw.chromium.launch_persistent_context(
-                    str(PROFILE_DIR), channel=channel, headless=True, accept_downloads=False,
+                    str(PROFILE_DIR), channel=channel, headless=True, accept_downloads=True,
                     viewport={"width": WIDTH, "height": HEIGHT}, args=["--disable-extensions"])
             except PlaywrightError as exc:
                 errors.append(f"{channel or 'chromium'}: {str(exc).splitlines()[0]}")
@@ -204,23 +204,21 @@ class BrowserManager:
         page.on("popup", lambda popup: asyncio.ensure_future(self._fold_popup(s, popup)))
         page.on("framenavigated", lambda frame: frame == page.main_frame and self._publish(s))
         page.on("load", lambda _p: self._publish(s))
-        page.on("close", lambda _p: self._on_page_closed(s))
+        page.on("close", lambda _p: self._on_page_closed(s, page))
         return s
 
-    def _on_page_closed(self, s: _Session) -> None:
+    def _on_page_closed(self, s: _Session, page: Page | None = None) -> None:
+        if page is not None and s.page is not page:
+            return
         if self._sessions.get(s.session_id) is s:
             del self._sessions[s.session_id]
             bus.publish(EvBrowserUpdate(state=self._closed_state(s.session_id)))
 
     async def _fold_popup(self, s: _Session, popup: Page) -> None:
-        """A link opening a new window navigates the session's page instead (one page per chat)."""
+        """Keep popups as owned tabs so authorization flows retain their opener."""
+        from ..agents.browser_tools import adopt_popup
         with contextlib.suppress(PlaywrightError):
-            await popup.wait_for_load_state("commit", timeout=10_000)
-            url = popup.url
-            await popup.close()
-            if url and url != "about:blank":
-                async with s.lock:
-                    await s.page.goto(url, wait_until="domcontentloaded", timeout=NAV_TIMEOUT_MS)
+            await adopt_popup(s, popup)
 
     async def _on_dialog(self, s: _Session, dialog: Dialog) -> None:
         self._add_console(s, "warning", f"Dismissed {dialog.type} dialog: {dialog.message}")
@@ -300,6 +298,8 @@ class BrowserManager:
         return state
 
     async def close(self, session_id: str) -> None:
+        from ..agents.browser_tools import close_session
+        await close_session(session_id)
         s = self._sessions.get(session_id)
         if s is not None:
             with contextlib.suppress(PlaywrightError):
@@ -313,6 +313,8 @@ class BrowserManager:
             raise WorkspaceError("Take control of the browser first")
         mouse, keyboard = s.page.mouse, s.page.keyboard
         async with s.lock:
+            from ..agents import recording
+            await recording.record(session_id, s.page, ev.model_dump())
             try:
                 if isinstance(ev, MouseInput):
                     x, y = min(max(ev.x, 0), WIDTH - 1), min(max(ev.y, 0), HEIGHT - 1)

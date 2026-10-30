@@ -240,6 +240,14 @@ async function startServer(status) {
   if (!packaged && !process.env.STUDIO_PORT && !process.env.STUDIO_DATA_DIR && (await healthy(DEV_SERVER))) return DEV_SERVER
 
   const data = dataDir()
+  const hostIdentity = createHash('sha256').update(path.resolve(data).toLowerCase()).digest('hex')
+  try {
+    const response = await fetch(`${DEV_SERVER}/api/agents/host`, { signal: AbortSignal.timeout(1500) })
+    if (response.ok) {
+      const existing = await response.json()
+      if (existing.service && existing.data_identity === hostIdentity) return DEV_SERVER
+    }
+  } catch { /* No independent host; start the desktop-managed server. */ }
   fs.mkdirSync(path.dirname(logFile(data)), { recursive: true })
   updater.prune()
   const bundle = updater.active()
@@ -315,10 +323,14 @@ const BROWSER_PORT = await freePort()
 
 function startAgentBrowser() {
   const agent = session.fromPartition(AGENT_SESSION)
-  // Pages the agent visits get no camera, microphone, location or notifications, and save nothing to disk
+  // Browser pages receive no device permissions. Downloads stay in the private runtime cache.
   agent.setPermissionRequestHandler((_contents, _permission, done) => done(false))
   agent.setPermissionCheckHandler(() => false)
-  agent.on('will-download', (event) => event.preventDefault())
+  agent.on('will-download', (_event, item) => {
+    const folder = path.join(dataDir(), 'cache', 'browser-downloads')
+    fs.mkdirSync(folder, { recursive: true })
+    item.setSavePath(path.join(folder, `${Date.now()}-${path.basename(item.getFilename())}`))
+  })
   app.on('web-contents-created', (_event, contents) => {
     if (contents.session === agent) contents.setWindowOpenHandler(() => ({ action: 'allow', overrideBrowserWindowOptions: AGENT_PAGE }))
   })
@@ -612,6 +624,7 @@ function createWindow() {
     minHeight: 600,
     show: false,
     title: 'Grom AI Studio',
+    frame: false,
     backgroundColor: '#080808', // the web app's --bg-0, so there is no white flash before it paints
     autoHideMenuBar: true,
     ...(devIcon ? { icon: devIcon } : {}),
@@ -625,6 +638,7 @@ function createWindow() {
   })
   nameDevWindow(win)
   win.on('resize', fitSplash)
+  for (const event of ['maximize', 'unmaximize', 'enter-full-screen', 'leave-full-screen']) win.on(event, sendWindowState)
   // Links to the web open in the user's browser; the window only ever shows the studio
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (isApp(url)) return { action: 'allow', overrideBrowserWindowOptions: { autoHideMenuBar: true } }
@@ -668,6 +682,32 @@ ipcMain.on('desktop:open-logs', (event) => fromSplash(event) && void shell.openP
 ipcMain.on('desktop:quit', (event) => fromSplash(event) && app.quit())
 
 const fromApp = (event) => isApp(event.senderFrame?.url ?? '')
+
+// Window commands are accepted only from the owned studio or splash main frame.
+function ownsWindow(event) {
+  if (!win || win.isDestroyed()) return false
+  const contents = event.sender
+  return (contents === win.webContents && event.senderFrame === contents.mainFrame && fromApp(event)) ||
+    (splash && contents === splash.webContents && event.senderFrame === contents.mainFrame && fromSplash(event))
+}
+function windowState() {
+  return { maximized: !!win?.isMaximized(), fullscreen: !!win?.isFullScreen() }
+}
+function sendWindowState() {
+  for (const contents of [win?.webContents, splash?.webContents]) {
+    if (contents && !contents.isDestroyed()) contents.send('desktop:window-state', windowState())
+  }
+}
+ipcMain.handle('desktop:window-state', event => ownsWindow(event) ? windowState() : null)
+ipcMain.on('desktop:window-command', (event, command) => {
+  if (!ownsWindow(event)) return
+  if (command === 'minimize') win.minimize()
+  else if (command === 'maximize') {
+    if (win.isFullScreen()) win.setFullScreen(false)
+    else if (win.isMaximized()) win.unmaximize()
+    else win.maximize()
+  } else if (command === 'close') win.close()
+})
 
 // The app wants the user while its window is not in front (the agent asks something, waits for an approval, or
 // finished a long piece of work): a system notification, and the taskbar button flashes (the dock icon bounces)

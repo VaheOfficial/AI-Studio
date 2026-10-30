@@ -55,6 +55,7 @@ export interface ComposerProps {
   onCommand: (name: string, args: string) => boolean | Promise<boolean>
   /** Something long is running for this chat (e.g. compacting): shown above the box; sending waits for it. */
   busy?: string
+  fixedMode?: boolean
 }
 
 const PROVIDER_LABEL = {
@@ -92,6 +93,7 @@ export function Composer({
   contextNote,
   onCommand,
   busy,
+  fixedMode,
 }: ComposerProps) {
   const verbose = useChatPrefs((st) => st.verbose)
   const setVerbose = useChatPrefs((st) => st.setVerbose)
@@ -301,7 +303,7 @@ export function Composer({
         autoFocus
       />
       <div className={s.bar}>
-        <SegmentedControl<AgentMode>
+        {!fixedMode && <SegmentedControl<AgentMode>
           size="sm"
           aria-label="Mode"
           value={mode}
@@ -310,7 +312,7 @@ export function Composer({
             { value: 'agent', label: 'Agent', icon: <Bot />, title: 'Can use tools' },
             { value: 'chat', label: 'Chat', icon: <MessageCircle />, title: 'No tools' },
           ]}
-        />
+        />}
         {groups.length > 0 ? (
           <div className={s.model}>
             <Select size="sm" value={model} onValueChange={onModelChange} options={groups} placeholder="Choose a model" />

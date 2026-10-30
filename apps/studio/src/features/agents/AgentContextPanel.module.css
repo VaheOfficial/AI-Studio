@@ -1,0 +1,17 @@
+.panel { height: 100%; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 24px; font-size: var(--text-sm); }
+.panel header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.panel h2 { margin: 0 0 6px; font-size: var(--text-lg); font-weight: 600; letter-spacing: -.02em; }
+.panel p { color: var(--text-3); font-size: var(--text-sm); line-height: 1.6; margin: 0; }
+.panel a { color: var(--accent-text); font-size: var(--text-sm); text-underline-offset: 3px; }
+.section { display: grid; gap: 14px; padding-top: 20px; border-top: 1px solid var(--border); }
+.heading { display: flex; align-items: center; gap: 8px; color: var(--text-2); }
+.heading h3 { margin: 0; color: var(--text-1); font-size: var(--text-sm); font-weight: 500; }
+.artifact { border: 1px solid var(--border); border-radius: var(--radius-md); }
+.artifact summary { display: flex; align-items: center; gap: 10px; padding: 12px; cursor: pointer; }
+.artifact summary:hover { background: var(--surface-hover); }
+.artifact > div { padding: 12px; border-top: 1px solid var(--border); }
+.artifact pre { max-height: 300px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--text-xs); }
+.links { display: flex; flex-wrap: wrap; gap: 16px; margin-top: auto; padding-top: 24px; }
+
+.subview { height: 100%; overflow-y: auto; padding: 16px; }
+.subview > section { padding: 16px 0; }

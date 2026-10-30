@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
-export type WorkspaceTab = 'terminal' | 'files' | 'browser' | 'tasks'
+export type WorkspaceTab = 'terminal' | 'files' | 'browser' | 'tasks' | 'context'
 
 interface PanelState {
   open: boolean
@@ -27,9 +27,9 @@ interface PanelState {
 export const useWorkspacePanel = create<PanelState>()(
   persist(
     (set) => ({
-      open: true,
+      open: false,
       size: 560,
-      tab: 'terminal',
+      tab: 'context',
       wrap: true,
       setOpen: (open) => set({ open }),
       setSize: (size) => set({ size }),

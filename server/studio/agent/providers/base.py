@@ -16,8 +16,10 @@ TITLE_ASK = ("(Automatic request, not from the user.) Don't answer the message a
 
 
 class Provider(ABC):
+    response_schema: dict | None = None
     # A chat's own context window (``/context``); providers that size requests themselves (Ollama) honor it
     context_limit: int | None = None
+    output_limit: int | None = None
 
     @abstractmethod
     def stream(self, system: str, history: list[Message], tools: list[ToolSpec] | None

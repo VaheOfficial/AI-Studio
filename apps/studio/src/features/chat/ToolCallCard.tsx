@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { Ban, Check, ChevronRight, MessageCircleQuestion, ShieldAlert, X } from 'lucide-react'
 import { Button, Input, Spinner, cn } from '@studio/ui'
@@ -8,6 +8,7 @@ import type { ToolDisplay } from '../../api/contracts/workspace'
 import { useChatPrefs } from './prefs'
 import { useChatLightbox } from './lightbox'
 import { ApprovalPreview, ToolBody } from './ToolBodies'
+import { ToolResult } from './ToolResult'
 import { toolMeta } from './toolMeta'
 import s from './ToolCallCard.module.css'
 
@@ -39,7 +40,8 @@ export interface ToolCallCardProps {
   onAnswer?: (id: string, answer: string) => void
 }
 
-export function ToolCallCard({ call, onApprove, onAnswer }: ToolCallCardProps) {
+// Memoized: a streaming reply re-renders its message on every token, and only the cards that changed should follow
+export const ToolCallCard = memo(function ToolCallCard({ call, onApprove, onAnswer }: ToolCallCardProps) {
   const meta = toolMeta(call.name)
   const primary = primaryText(call, meta.primary)
   const needsApproval = call.status === 'pending_approval'
@@ -53,7 +55,7 @@ export function ToolCallCard({ call, onApprove, onAnswer }: ToolCallCardProps) {
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 6 }}
+      initial={false}
       animate={{ opacity: 1, y: 0 }}
       className={cn(s.card, s[call.status], (needsApproval || asking) && s.attention)}
     >
@@ -148,7 +150,7 @@ export function ToolCallCard({ call, onApprove, onAnswer }: ToolCallCardProps) {
       )}
     </motion.div>
   )
-}
+})
 
 /** The agent's question, waiting: pick an option or answer in your own words. */
 function QuestionPrompt({ question, options, onAnswer }: { question: string; options: string[]; onAnswer: (a: string) => void }) {
@@ -205,9 +207,7 @@ function ReadableCall({ call }: { call: ToolCall }) {
       {call.output && (
         <>
           <div className={s.label}>Result</div>
-          <div className={cn(s.result, /^[[{]/.test(call.output.trimStart()) && s.mono, call.status === 'error' && s.resultError)}>
-            {call.output}
-          </div>
+          <ToolResult output={call.output} error={call.status === 'error'} />
         </>
       )}
     </>

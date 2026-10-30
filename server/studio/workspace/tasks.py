@@ -77,6 +77,11 @@ class TaskRunner:
         db.execute(f"UPDATE workspace_tasks SET {cols} WHERE id = ?", (*fields.values(), task_id))
         task = self.get(task_id)
         bus.publish(EvTaskUpdate(task=task))
+        from ..agents import store as agents_store
+        agents_store.notify("delegations", task.origin_session_id)
+        if fields.get('status') in ('succeeded','failed'):
+            from ..agents import notifications
+            notifications.save(task.origin_session_id, 'notice' if task.status == 'succeeded' else 'error', 'Subagent finished' if task.status == 'succeeded' else 'Subagent needs attention', task.result or task.error or task.title, 'task:' + task.id + ':' + str(task.attempts) + ':' + task.status)
         return task
 
     def is_task_session(self, session_id: str) -> bool:
@@ -146,8 +151,16 @@ class TaskRunner:
         self._agent = agent
         self._stopping = False
         # Whatever was running when the server stopped continues now.
-        for r in db.query("SELECT id, status FROM workspace_tasks WHERE status IN ('queued', 'running', "
+        for r in db.query("SELECT id, status, session_id, origin_session_id FROM workspace_tasks WHERE status IN ('queued', 'running', "
                           "'waiting_approval') ORDER BY created_at"):
+            from ..agents import delegation
+            child = delegation.get(r['session_id']) if db.query_one("SELECT name FROM sqlite_master WHERE name='agent_delegations'") else None
+            if child:
+                from ..agent_plus import store as missions
+                paused_parent = missions.owns_session(r['origin_session_id']) and missions.get(r['origin_session_id']).status != 'running'
+                if r['status'] != 'queued' or paused_parent:
+                    self._update(r['id'], status='failed', error='Interrupted or parent paused. Inspect the child conversation before explicitly retrying.', finished_at=db.now_iso())
+                    continue
             if r["status"] != "queued":
                 db.execute("UPDATE workspace_tasks SET status = 'queued' WHERE id = ?", (r["id"],))
             self._queue.put_nowait(r["id"])

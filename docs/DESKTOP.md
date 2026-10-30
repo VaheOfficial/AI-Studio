@@ -189,3 +189,15 @@ and PowerShell on Windows.
 
 Without the desktop shell the server runs the same way everywhere: `pnpm server` on Windows, `server/run.sh` on
 macOS and Linux; with the web app built (`pnpm --filter studio build`) it serves the UI itself at its own port.
+
+## Window frame and settings
+
+The desktop window is frameless. The app draws a 56px draggable header with 46-by-40px minimize, maximize/restore and close buttons, including on the startup screen. Window commands accept only the owned studio or splash main frame. Interactive elements are non-draggable, and branding contracts with the sidebar. Frame changes require restarting the desktop shell.
+
+Settings opens as a modal over the current page. Categories separate studio configuration, agent preferences, and connections. Global configuration drafts survive category changes; closing with unsaved global settings asks whether to discard them. The shortcut is Ctrl+, (Cmd+, on macOS). Recent chats remains the conversation list, and the agent workspace's Context tab holds progress, subagents, artifacts, and document/activity views.
+
+The Settings category heading and Save changes button sit outside the scrolling form, so they remain visible while editing long categories.
+
+Instruction-tuned Gemma 4 GGUFs with missing or incompatible chat metadata use the bundled native template from google/gemma-4-26B-A4B-it. The weights are left intact. The agent checks the running server’s reported tool-call capability before starting tool work.
+
+Google’s pretrained Gemma 4 base variants are marked as lacking agent tool support. Agent mode rejects them before loading; use the instruction-tuned `-it` variant for conversations and tools. The local llama.cpp server uses one context slot, with local requests queued.

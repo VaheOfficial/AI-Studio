@@ -1,5 +1,11 @@
 # Studio API
 
+Unified conversations, sequential missions, scoped subagents and reusable capabilities: [Agents API](api/agents.md).
+
+Declarative animated films, reusable scene components, exact-frame export and optional timed narration: [Animation API](api/animation.md).
+
+Agents also exposes conversation action contracts, explicit model protocol checks, signed communication channels and read-only source monitors through `/api/agents`; see [action contracts and incoming work](api/agents.md#action-contracts-and-incoming-work).
+
 Server: FastAPI on `http://127.0.0.1:8765`. All routes under `/api`. Types are defined in
 [`apps/studio/src/api/types.ts`](../apps/studio/src/api/types.ts) — that file is the contract.
 Generated files are served statically under `/files/...` (mapped to `<data_dir>/...`).
@@ -111,6 +117,20 @@ Prompts the agent runs on a schedule, or when a trigger's check finds something 
 
 Push: `automation.update`, `automation.removed`, `automation.run` (`status`: `reported` \| `needs_approval` \| `error`; quiet runs send nothing).
 
+## Saved teams — compatibility
+
+The autonomous Swarm scheduler is retired. `/swarm` redirects to Agents activity. Historical records remain readable; [Agents import](api/agents.md) creates a ready sequential mission with saved requirements and source context.
+
+| Method | Path | Result |
+| --- | --- | --- |
+| GET | `/api/swarms` | Saved `Swarm[]` |
+| GET | `/api/swarms/{id}` | Historical `SwarmDetail` |
+| POST | `/api/swarms/{id}/pause`, `/stop` | Legacy stop controls |
+| DELETE | `/api/swarms/{id}` | Delete saved team and its chats; workspace files remain |
+| Other team mutations | `/api/swarms/...` | 410; use an Agents mission |
+
+Saved team chats are excluded from ordinary recent conversations and cannot receive new work. Mission APIs are canonical under `/api/agents/missions`; `/api/agent-plus/missions` remains compatible. `agents.update` invalidates the unified overview and feature queries. Mission state also retains its existing `agentplus.update` push event.
+
 ## Connectors — [`contracts/connectors.ts`](../apps/studio/src/api/contracts/connectors.ts)
 MCP servers whose tools the agent can use. Env var and header values come back as `•••`; sending `•••` keeps them.
 | Method | Path | Body | Returns |
@@ -134,11 +154,12 @@ A text RPG with a chat model as game master and the game state kept by the serve
 | POST | `/api/agent/images` | multipart `files` | `{ urls }` — pictures to attach to a message (`agent.send.images`) |
 | GET | `/api/agent/sessions` | | `AgentSession[]` (no messages) |
 | POST | `/api/agent/sessions` | `{ model, mode }` | `AgentSession` |
-| GET | `/api/agent/sessions/{id}` | | `AgentSession` with messages |
+| GET | `/api/agent/sessions/{id}` | `?limit=` or `?from=<message id>` (optional) | `AgentSession` with all messages; with `limit`, only the latest page (at most `limit` messages, about 400 KB), with `from`, every message from that one on (the latest page when it no longer exists). Paged reads add `has_older` and `totals` (`SessionTotals`: cost, tokens and generation time over every saved reply) |
+| GET | `/api/agent/sessions/{id}/messages` | `?before=<message id>&limit=` | `MessagePage` — the page just before that message, oldest first, and `has_older`; `404` when the message is gone |
 | PATCH | `/api/agent/sessions/{id}` | `PatchSessionRequest` (`title?`, `model?`, `mode?`, `context_size?` — the chat's own context window in tokens, `0` = automatic; `/context`) | `AgentSession` |
 | DELETE | `/api/agent/sessions/{id}` | | `204` — also stops a running turn |
-| POST | `/api/agent/sessions/{id}/rewind` | `MessageRef` (a user message) | `RewindResult` — drops that message and all later ones, restores files the agent's file tools changed since; lists commands whose effects stay |
-| POST | `/api/agent/sessions/{id}/fork` | `MessageRef` | `AgentSession` — new chat with the messages up to and including that one, same workspace folder |
+| POST | `/api/agent/sessions/{id}/rewind` | `MessageRef` (a user message) | `RewindResult` — drops that message and all later ones, restores files the agent's file tools changed since; lists commands whose effects stay. Its `session` is a paged read |
+| POST | `/api/agent/sessions/{id}/fork` | `MessageRef` | `AgentSession` (paged read) — new chat with the messages up to and including that one, same workspace folder |
 | GET | `/api/agent/memories` | | `Memory[]` — what the assistant remembers about the user across chats (Settings → Assistant), oldest first |
 | POST | `/api/agent/memories` | `MemoryCreate` (`text`, ≤ 500 chars) | `Memory` — an identical memory is returned instead of duplicated; `400` when 200 are stored |
 | DELETE | `/api/agent/memories/{id}` | | `204` |
@@ -168,3 +189,26 @@ unless listed in `settings.agent_auto_approve`.
 - `list_dir(path)` / `read_file(path)` — sandboxed to `<data_dir>/workspace`
 - ⚠ `write_file(path, content)` — sandboxed to workspace
 - ⚠ `run_command(command, cwd?)` — PowerShell on Windows, cwd defaults to workspace, 120s timeout
+
+
+### Additional unified Agents capabilities
+
+The [Agents contract](api/agents.md) documents application services, native Office, continuous local voice, document files, retrieval and notifications.
+
+| Method | Path | Contract |
+| --- | --- | --- |
+| GET | `/api/agents/coverage` | `CapabilityFamily[]` |
+| GET | `/api/agents/service-templates` | `ServiceTemplate[]` |
+| GET / POST | `/api/agents/services` | `AgentService[]` / `ServiceCreate` -> `AgentService` |
+| POST | `/api/agents/services/import` | `ServiceImport` -> `ServiceReview` |
+| PATCH / DELETE | `/api/agents/services/{id}` | `{enabled}` -> `AgentService` / 204 |
+| PUT | `/api/agents/connections/{id}/context` | `ApplicationContext` |
+| GET / PATCH | `/api/agents/notifications[/{id}]` | `AgentNotification[]` / mark read |
+| GET / PUT | `/api/agents/notification-settings` | `NotificationSettings` |
+| POST | `/api/agents/host/tls` | Configure/renew encrypted local HTTPS; requires separate trust |
+| POST | `/api/agents/host/trust` | Explicit user certificate-store trust |
+
+The separate device gateway has authenticated local dictation, scoped speech jobs/audio, native Office task-pane manifests, optional encrypted browser push, and a mobile web manifest. It exposes no unrestricted Studio model-management API. Exact paths and scopes are in the Agents contract.
+# Games arena
+
+The [Arena API](api/arena.md) provides persisted task competitions, asynchronous arguments, match controls and `arena.update` events. Its contracts are in `src/api/contracts/arena.ts` and `studio/schemas_arena.py`.

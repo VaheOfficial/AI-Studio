@@ -4,6 +4,7 @@ trust_remote_code)."""
 from __future__ import annotations
 
 import inspect
+import math
 import json
 import shutil
 import struct
@@ -12,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from latent_preview import LatentPreviewer
-from worker_base import BadRequest, Worker, log, serve
+from worker_base import BadRequest, Worker, free_cuda, log, serve
 
 import torch
 
@@ -126,6 +127,8 @@ class DiffusersWorker(Worker):
 
     def __init__(self, runtime: str) -> None:
         super().__init__(runtime)
+        if torch.cuda.is_available():
+            torch.cuda.set_per_process_memory_fraction(0.90)
         self.pipe: Any = None
         self.offload = "none"
         self.derived: dict[str, Any] = {}  # mode → pipeline sharing self.pipe's components
@@ -273,7 +276,31 @@ class DiffusersWorker(Worker):
             for i, (seed, out_path) in enumerate(zip(seeds, paths, strict=True)):
                 kwargs = self._call_kwargs(pipe, req, params, seed, mode, images_in, offset=i * run_steps,
                                            run_steps=run_steps)
-                image = pipe(**kwargs).images[0]
+                handles = []
+                if type(pipe).__name__ == "QwenImage21Pipeline":
+                    entered = False
+                    def encoding(_module: Any, _inputs: Any) -> None:
+                        self.progress.message = "Encoding image references and prompt"
+                    def denoising(_module: Any, _inputs: Any) -> None:
+                        nonlocal entered
+                        if not entered:
+                            if self.offload == "model":
+                                # Editing encodes references through the VAE before denoising, although the
+                                # generic hook chain puts the VAE last. Release finished inputs explicitly.
+                                for component in pipe.components.values():
+                                    if isinstance(component, torch.nn.Module) and component is not pipe.transformer:
+                                        if any(p.device.type == "cuda" for p in component.parameters()):
+                                            component.to("cpu")
+                                free_cuda()
+                            self.progress.message = "Denoising"
+                            entered = True
+                    handles = [pipe.text_encoder.register_forward_pre_hook(encoding),
+                               pipe.transformer.register_forward_pre_hook(denoising)]
+                try:
+                    image = pipe(**kwargs).images[0]
+                finally:
+                    for handle in handles:
+                        handle.remove()
                 Path(out_path).parent.mkdir(parents=True, exist_ok=True)
                 image.save(out_path)
                 images.append({"path": out_path, "width": image.width, "height": image.height, "seed": seed})
@@ -318,6 +345,14 @@ class DiffusersWorker(Worker):
             # Qwen-Image: real CFG is enabled by true_cfg_scale plus a negative prompt
             kwargs["true_cfg_scale"] = guidance
             kwargs["negative_prompt"] = negative or " "
+            if type(pipe).__name__ == "QwenImage21Pipeline" and "output_resolution" in params:
+                # The pipeline resizes every reference to this area and caches its denoiser keys/values.
+                # Bound the combined reference area while retaining the explicit output dimensions.
+                references = images_in.get("image", [])
+                count = len(references) if isinstance(references, list) else 1
+                requested = round(math.sqrt(width * height) / 32) * 32
+                budgeted = math.floor(math.sqrt(2 * 768**2 / max(1, count)) / 32) * 32
+                kwargs["output_resolution"] = min(2048, max(256, min(requested, budgeted)))
         elif "guidance_scale" in params:
             kwargs["guidance_scale"] = guidance  # CFG, or the embedded guidance of distilled FLUX models
         elif "distilled_guidance_scale" in params:

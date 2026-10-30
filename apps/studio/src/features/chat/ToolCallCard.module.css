@@ -118,8 +118,8 @@
   color: var(--text-3);
   font-size: 10.5px;
   font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  letter-spacing: normal;
+  text-transform: none;
 }
 
 .pre {
@@ -160,8 +160,8 @@
   color: var(--text-3);
   font-size: 10.5px;
   font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  letter-spacing: normal;
+  text-transform: none;
 }
 
 .arg dd {
@@ -525,3 +525,24 @@
 .zoom img {
   object-fit: contain;
 }
+
+.structuredResult { max-height: 420px; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-0); padding: 4px 12px; }
+.resultFields { display: flex; flex-direction: column; margin: 0; min-width: 0; font-size: var(--text-xs); }
+.resultFields > div { display: grid; grid-template-columns: minmax(80px, 120px) minmax(0, 1fr); gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--border); }
+.resultFields > div:last-child { border: 0; }
+.resultFields dt { color: var(--text-3); overflow-wrap: anywhere; }
+.resultFields dd { margin: 0; min-width: 0; color: var(--text-2); }
+.resultFields .resultFields > div { grid-template-columns: minmax(60px, 100px) minmax(0, 1fr); padding: 6px 0; }
+.resultText { display: block; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--text-sm); line-height: 1.6; max-height: 320px; overflow: auto; }
+.resultDisclosure summary { color: var(--text-2); cursor: pointer; padding: 2px 0; }
+.resultDisclosure[open] summary { margin-bottom: 8px; }
+@media (max-width: 600px) { .resultFields > div, .resultFields .resultFields > div { grid-template-columns: minmax(0, 1fr); gap: 4px; } .verb { flex-shrink: 1; } .approvalRow { flex-wrap: wrap; } }
+
+.structuredResult { container-type: inline-size; }
+.animationHead { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.animationHead strong { overflow-wrap: anywhere; }
+.animationStoryboard { display: block; width: 100%; height: auto; border-radius: var(--radius-md); }
+.audioEnvelope { display: block; width: 100%; height: 84px; color: var(--accent); background: var(--bg-0); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 8px; }
+.audioQuiet { fill: var(--text-3); }
+.audioScale { display: flex; justify-content: space-between; color: var(--text-3); font-size: var(--text-xs); }
+@container (max-width: 420px) { .resultFields > div, .resultFields .resultFields > div { grid-template-columns: minmax(0, 1fr); gap: 4px; } }

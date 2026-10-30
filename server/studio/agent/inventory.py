@@ -5,8 +5,9 @@ listed with a caveat the model may ignore."""
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
-from .. import catalog, db, imaging, ollama, settings
+from .. import capabilities, catalog, db, imaging, ollama, settings
 from ..schemas import CatalogEntry, DefaultTask, InstalledModel, RuntimeId, Settings
 from ..schemas_image import ImageMode, ImageModelProfile
 
@@ -25,7 +26,19 @@ def runtime_ready(runtime: RuntimeId, s: Settings) -> bool:
 
 def usable_models() -> list[InstalledModel]:
     s = settings.load()
-    return [m for m in db.list_installed() if m.status != "error" and runtime_ready(m.runtime, s)]
+    caps = capabilities.get()
+    generation = {"image": "image", "voice": "voice", "stt": "voice", "music": "music", "video": "video"}
+    usable = []
+    for m in db.list_installed():
+        if m.status == "error" or not runtime_ready(m.runtime, s):
+            continue
+        feature = generation.get(m.kind)
+        if feature and m.runtime not in _KEYS:
+            # Imported database rows are not evidence of an installation on this host.
+            if not caps.features[feature].local or not m.path or not Path(m.path).exists():
+                continue
+        usable.append(m)
+    return usable
 
 
 _TASK_KIND = {"image": "image", "image_edit": "image", "voice": "voice", "stt": "stt", "music": "music",
@@ -84,7 +97,7 @@ def summary() -> str:
     for kind, label in _KIND_LABELS.items():
         mine = sorted((m for m in usable if m.kind == kind), key=lambda m: order.get(m.id, len(order)))
         if not mine:
-            lines.append(f"{label}: nothing installed (search_catalog can find models to install)")
+            lines.append(f"{label}: no usable model configured on this machine (catalog entries are not installations)")
             continue
         lines.append(f"{label}:")
         for m in mine:

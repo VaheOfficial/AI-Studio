@@ -42,6 +42,9 @@ class _LocalProvider(OpenAIProvider):
     async def info(self) -> ModelInfo:
         """The loaded model's context window, so the agent loop trims and summarizes before the server refuses an
         oversized request (without it the chat grew until llama-server answered 400)."""
+        m = await asyncio.to_thread(db.get_installed, self.model)
+        if m and m.runtime in ("llamacpp", "lmstudio") and not await asyncio.to_thread(_tools, m):
+            return ModelInfo(vision=_sees(m), context=settings.load().llamacpp_ctx_size, tools=False)
         await self._ready()
         return await self._model_info()
 
@@ -90,7 +93,8 @@ class LlamaCppProvider(_LocalProvider):
         n_ctx = (props.get("default_generation_settings") or {}).get("n_ctx")
         vision = (props.get("modalities") or {}).get("vision")
         return ModelInfo(vision=bool(vision) if vision is not None else fallback.vision,
-                         context=int(n_ctx) if n_ctx else fallback.context)
+                         context=int(n_ctx) if n_ctx else fallback.context,
+                         tools=(props.get("chat_template_caps") or {}).get("supports_tool_calls"))
 
 
 class LMStudioProvider(_LocalProvider):
@@ -106,10 +110,20 @@ PROVIDERS: dict[str, type[_LocalProvider]] = {"llamacpp": LlamaCppProvider, "lms
 def options() -> list[ChatModelOption]:
     """Installed text models of the llama.cpp and LM Studio runtimes (llama-server uses --jinja: tools work)."""
     available = {"llamacpp": llamacpp.installed(), "lmstudio": lmstudio.installed()}
-    return [ChatModelOption(id=f"{m.runtime}:{m.id}", provider=m.runtime, name=m.name, tools=True,
+    return [ChatModelOption(id=f"{m.runtime}:{m.id}", provider=m.runtime, name=m.name, tools=_tools(m),
                             available=available[m.runtime], vision=_sees(m))
             for m in db.list_installed()
             if m.kind == "text" and m.runtime in available and not llamacpp.is_draft_model(m)]
+
+
+def _tools(m: InstalledModel) -> bool:
+    if m.runtime not in ("llamacpp", "lmstudio"):
+        return True
+    try:
+        model, _ = llamacpp.model_files(m)
+        return llamacpp.supports_tool_chat(model)
+    except (WorkerError, OSError, ValueError):
+        return False
 
 
 def _sees(m: InstalledModel) -> bool:

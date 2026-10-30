@@ -1,7 +1,7 @@
-import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Fragment, Suspense, lazy, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { NavLink, useLocation, useMatch, useNavigate, useOutlet } from 'react-router'
 import { AnimatePresence, motion } from 'motion/react'
-import { AlarmClock, ArrowUpCircle, AudioLines, Boxes, Clapperboard, House, Image, MessageSquareText, Moon, MoreHorizontal, Music, PanelLeft, Pencil, Plus, ScrollText, Search, Settings, Skull, Sun, Swords, Trash2, Trophy } from 'lucide-react'
+import { Minus, Square, Copy, X, AlarmClock, ArrowUpCircle, AudioLines, Boxes, Clapperboard, House, Image, MessageSquareText, Moon, MoreHorizontal, Music, PanelLeft, Pencil, Plus, ScrollText, Search, Settings, Skull, Sun, Swords, Trash2, Trophy } from 'lucide-react'
 import { CommandPalette, ConfirmDialog, IconButton, Kbd, Logo, Menu, StatusDot, Tooltip, cn, type CommandAction } from '@studio/ui'
 import type { GameSummary } from '../api/contracts/game'
 import { useDeleteGame, useGames } from '../api/game'
@@ -15,12 +15,14 @@ import { VIDEO_AREA } from '../features/video/sections'
 import { VOICE_AREA } from '../features/voice/sections'
 import { CreditPill } from '../features/openrouter/CreditPill'
 import { blocked } from '../lib/capabilities'
-import { useUpdates } from '../lib/desktop'
+import { desktop, useUpdates } from '../lib/desktop'
 import { formatBytes } from '../lib/format'
 import { shortcut } from '../lib/platform'
 import { useUI } from '../stores/ui'
 import { JobsTray } from './JobsTray'
 import s from './Shell.module.css'
+import { openSettings } from '../features/settings/settingsState'
+const SettingsModal = lazy(() => import('../features/settings/SettingsModal'))
 
 interface NavItem {
   to: string
@@ -36,17 +38,19 @@ interface NavItem {
 
 const NAV: NavItem[] = [
   { to: '/', label: 'Home', icon: <House />, shortcut: '1' },
-  { to: '/chat', label: 'Chat', icon: <MessageSquareText />, hue: 'var(--hue-text)', shortcut: '2' },
+  { to: '/agents', label: 'Agents', icon: <MessageSquareText />, hue: 'var(--hue-text)', shortcut: '2' },
   { to: '/image', label: 'Image', icon: <Image />, hue: 'var(--hue-image)', shortcut: '3', feature: 'image', area: IMAGE_AREA },
   { to: '/voice', label: 'Voice', icon: <AudioLines />, hue: 'var(--hue-voice)', shortcut: '4', feature: 'voice', area: VOICE_AREA },
   { to: '/music', label: 'Music', icon: <Music />, hue: 'var(--hue-music)', shortcut: '5', feature: 'music', area: MUSIC_AREA },
   { to: '/video', label: 'Video', icon: <Clapperboard />, hue: 'var(--hue-video)', shortcut: '8', feature: 'video', area: VIDEO_AREA },
   { to: '/models', label: 'Models', icon: <Boxes />, shortcut: '6' },
-  { to: '/game', label: 'Game', icon: <Swords />, hue: 'var(--hue-game)', shortcut: '7', feature: 'game' },
+  { to: '/games', label: 'Games', icon: <Swords />, hue: 'var(--hue-game)', shortcut: '7' },
   { to: '/automations', label: 'Automations', icon: <AlarmClock />, shortcut: '9' },
 ]
 
 /** The pages this machine can run (everything, until the capability report has loaded). */
+function locationOrigin() { return window.location.origin }
+
 function useNav(): NavItem[] {
   const { data: caps } = useCapabilities()
   return useMemo(() => NAV.filter((n) => !blocked(caps, n.feature)), [caps])
@@ -87,7 +91,8 @@ export function Shell() {
       const item = [...nav, ...FOOTER_NAV].find((n) => n.shortcut === k)
       if (item) {
         e.preventDefault()
-        navigate(item.to)
+        if (item.to === '/settings') openSettings()
+        else navigate(item.to)
       }
     }
     window.addEventListener('keydown', onKey)
@@ -95,15 +100,35 @@ export function Shell() {
   }, [nav, navigate, setCommandOpen, toggleSidebar])
 
   const actions = useCommandActions()
-  // Animate between sections, not between sub-routes like /chat/:id
+  // Animate between sections, not between sub-routes like /agents/chat/:id
   const section = '/' + (location.pathname.split('/')[1] ?? '')
   // The glow behind the page takes the color of the area that is open
   const hue = nav.find((n) => n.to === section)?.hue
 
   return (
-    <div className={cn(s.shell, sidebarCollapsed && s.collapsed)}>
+    <div className={cn(s.shell, sidebarCollapsed && s.collapsed, desktop?.window && s.desktopFrame)} data-platform={desktop?.window?.platform} onClickCapture={event => {
+      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+      const anchor = event.target instanceof Element ? event.target.closest('a') : null
+      if (!anchor || anchor.origin !== locationOrigin()) return
+      const section = ({ '/settings': 'general', '/agents/settings': 'agent', '/agents/capabilities': 'tools', '/agents/skills': 'skills', '/agents/knowledge': 'memory', '/agents/services': 'applications', '/agents/connections': 'devices', '/agents/voice': 'voice' } as Record<string, string>)[anchor.pathname]
+      if (section) { event.preventDefault(); event.stopPropagation(); openSettings(section) }
+    }}>
+        <header className={s.topbar}><Brand collapsed={sidebarCollapsed} />
+          <IconButton label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} icon={<PanelLeft />} onClick={toggleSidebar} tooltipSide="bottom" />
+          <div className={s.topbarSpacer} />
+          <CreditPill />
+          <UpdatePill />
+          <ConnectionPill />
+          <JobsTray />
+          <IconButton
+            label={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+            icon={theme === 'dark' ? <Sun /> : <Moon />}
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            tooltipSide="bottom"
+          />
+          {desktop?.window && <WindowControls />}
+        </header>
       <aside className={s.sidebar}>
-        <Brand collapsed={sidebarCollapsed} />
 
         <button className={s.search} onClick={() => setCommandOpen(true)}>
           <Search size={15} />
@@ -121,7 +146,7 @@ export function Shell() {
               <Fragment key={item.to}>
                 <SideLink item={item} collapsed={sidebarCollapsed} />
                 {item.area && <AreaSections area={item.area} collapsed={sidebarCollapsed} />}
-                {item.to === '/game' && <Adventures collapsed={sidebarCollapsed} />}
+                {item.to === '/games' && <><GamesLinks collapsed={sidebarCollapsed} /><Adventures collapsed={sidebarCollapsed} /></>}
               </Fragment>
             ))}
           </nav>
@@ -138,20 +163,7 @@ export function Shell() {
       </aside>
 
       <div className={s.main} style={hue ? { ['--area-hue' as string]: hue } : undefined}>
-        <header className={s.topbar}>
-          <IconButton label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} icon={<PanelLeft />} onClick={toggleSidebar} tooltipSide="bottom" />
-          <div className={s.topbarSpacer} />
-          <CreditPill />
-          <UpdatePill />
-          <ConnectionPill />
-          <JobsTray />
-          <IconButton
-            label={theme === 'dark' ? 'Light mode' : 'Dark mode'}
-            icon={theme === 'dark' ? <Sun /> : <Moon />}
-            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-            tooltipSide="bottom"
-          />
-        </header>
+
         <main className={s.content}>
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
@@ -168,9 +180,28 @@ export function Shell() {
         </main>
       </div>
 
+      <Suspense fallback={null}><SettingsModal /></Suspense>
       <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} actions={actions} />
     </div>
   )
+}
+
+function WindowControls() {
+  const bridge = desktop?.window
+  const [state, setState] = useState({ maximized: false, fullscreen: false })
+  useEffect(() => {
+    if (!bridge) return
+    let active = true
+    const stop = bridge.onState(value => { if (active) setState(value) })
+    void bridge.getState().then(value => { if (active && value) setState(value) })
+    return () => { active = false; stop() }
+  }, [bridge])
+  const restore = state.maximized || state.fullscreen
+  return <div className={s.windowControls} role="group" aria-label="Window controls">
+    <button aria-label="Minimize window" title="Minimize" onClick={() => bridge?.command('minimize')}><Minus size={18} /></button>
+    <button aria-label={restore ? 'Restore window' : 'Maximize window'} title={restore ? 'Restore' : 'Maximize'} onClick={() => bridge?.command('maximize')}>{restore ? <Copy size={16} /> : <Square size={16} />}</button>
+    <button className={s.windowClose} aria-label="Close window" title="Close" onClick={() => bridge?.command('close')}><X size={20} /></button>
+  </div>
 }
 
 /** The sections of an area this machine can run. */
@@ -186,7 +217,7 @@ function SideLink({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
   // An open area hands the highlight to its section below; its own entry only stays lit
   const sections = useAreaSections(item.area)
   const unfolded = isActive && sections.length > 1
-  const link = (
+  const link = item.to === '/settings' ? <button className={s.navItem} onClick={() => openSettings()}><span className={s.navIcon}>{item.icon}</span>{!collapsed && <span className={s.navLabel}>Settings</span>}</button> : (
     <NavLink
       to={item.to}
       end={item.to === '/'}
@@ -265,8 +296,16 @@ function SubLink({ to, label, description, icon, collapsed, end = false }: { to:
  * Saved adventures, unfolded under Game while it is open, so the game page keeps a single panel of its own (the
  * character sheet). With the sidebar collapsed only "New adventure" stays; the rest are in the command palette.
  */
+function GamesLinks({ collapsed }: { collapsed: boolean }) {
+  const open = !!useMatch({ path: '/games', end: false })
+  return open ? <div className={s.subnav} style={{ ['--hue' as string]: 'var(--hue-game)' }}>
+    <SubLink to="/games/arena" label="Arena" description="Head-to-head AI matches" icon={<Swords />} collapsed={collapsed} />
+    <SubLink to="/games/adventures" label="Adventures" description="Play a story" icon={<Trophy />} collapsed={collapsed} />
+  </div> : null
+}
+
 function Adventures({ collapsed }: { collapsed: boolean }) {
-  const open = !!useMatch({ path: '/game', end: false })
+  const open = !!useMatch({ path: '/games/adventures', end: false })
   return (
     <AnimatePresence initial={false}>
       {open && (
@@ -340,7 +379,7 @@ function RecentChats() {
     <div className={s.recent}>
       <div className={s.sectionLabel}>
         <span>Recent chats</span>
-        <IconButton size="sm" label="New chat" icon={<Plus />} onClick={() => navigate('/chat')} />
+        <IconButton size="sm" label="New chat" icon={<Plus />} onClick={() => navigate('/agents/chat')} />
       </div>
       {recent.length === 0 ? <p className={s.recentEmpty}>No conversations yet</p> : recent.map((c) => <RecentChat key={c.id} chat={c} />)}
     </div>
@@ -349,7 +388,7 @@ function RecentChats() {
 
 function RecentChat({ chat }: { chat: AgentSession }) {
   const navigate = useNavigate()
-  const active = !!useMatch(`/chat/${chat.id}`)
+  const active = !!useMatch(`/agents/chat/${chat.id}`)
   const rename = useUpdateSession()
   const remove = useDeleteSession()
   const [editing, setEditing] = useState(false)
@@ -376,7 +415,7 @@ function RecentChat({ chat }: { chat: AgentSession }) {
           }}
         />
       ) : (
-        <NavLink to={`/chat/${chat.id}`} className={s.recentLink} title={title}>
+        <NavLink to={`/agents/chat/${chat.id}`} className={s.recentLink} title={title}>
           {title}
         </NavLink>
       )}
@@ -400,7 +439,7 @@ function RecentChat({ chat }: { chat: AgentSession }) {
         tone="danger"
         onConfirm={async () => {
           await remove.mutateAsync(chat.id)
-          if (active) navigate('/chat')
+          if (active) navigate('/agents/chat')
         }}
       />
     </div>
@@ -478,11 +517,10 @@ function MemoryMeter({ collapsed, used, total, cpu }: { collapsed: boolean; used
 /** Desktop app: a newer release exists. Opens Settings, where it is installed. */
 function UpdatePill() {
   const { data } = useUpdates()
-  const navigate = useNavigate()
   if (!data?.available && !data?.needsInstaller) return null
   return (
     <Tooltip content={`Version ${data.latest} is available`} side="bottom">
-      <button className={cn(s.conn, s.connUpdate)} onClick={() => navigate('/settings')}>
+      <button className={cn(s.conn, s.connUpdate)} onClick={() => openSettings()}>
         <ArrowUpCircle size={13} />
         <span>Update</span>
       </button>
@@ -518,10 +556,10 @@ function useCommandActions(): CommandAction[] {
       group: 'Navigate',
       icon: n.icon,
       shortcut: n.shortcut ? shortcut(n.shortcut) : undefined,
-      onRun: () => navigate(n.to),
+      onRun: () => n.to === '/settings' ? openSettings() : navigate(n.to),
     }))
     const creates: (CommandAction & { feature?: FeatureId; local?: boolean })[] = [
-      { id: 'new-chat', label: 'New chat', group: 'Create', icon: <MessageSquareText />, onRun: () => navigate('/chat') },
+      { id: 'new-chat', label: 'New chat', group: 'Create', icon: <MessageSquareText />, onRun: () => navigate('/agents/chat') },
       { id: 'new-image', label: 'Generate an image', group: 'Create', icon: <Image />, feature: 'image', onRun: () => navigate('/image') },
       { id: 'new-speech', label: 'Text to speech', group: 'Create', icon: <AudioLines />, feature: 'voice', onRun: () => navigate('/voice/speak') },
       { id: 'clone-voice', label: 'Clone a voice', group: 'Create', icon: <AudioLines />, feature: 'voice', local: true, onRun: () => navigate('/voice/library') },
@@ -537,7 +575,7 @@ function useCommandActions(): CommandAction[] {
       label: c.title || 'Untitled chat',
       group: 'Chats',
       icon: <MessageSquareText />,
-      onRun: () => navigate(`/chat/${c.id}`),
+      onRun: () => navigate(`/agents/chat/${c.id}`),
     }))
     const adventures: CommandAction[] = blocked(caps, 'game')
       ? []

@@ -13,6 +13,8 @@ from pydantic import BaseModel, Field, TypeAdapter
 from .schemas_automations import AUTOMATION_SERVER_EVENTS
 from .schemas_connectors import CONNECTOR_SERVER_EVENTS
 from .schemas_game import GAME_SERVER_EVENTS
+from .schemas_swarm import SWARM_SERVER_EVENTS
+from .schemas_agent_plus import EvAgentPlusUpdate
 from .schemas_image import EvImagePreview
 from .schemas_openrouter import EvOpenRouterAccount
 from .schemas_workspace import (WORKSPACE_SERVER_EVENTS, BrowserInputMessage, BrowserWatchMessage,
@@ -378,6 +380,22 @@ class ContextUsage(BaseModel):
     limit: int | None = None
 
 
+class SessionTotals(BaseModel):
+    """Summed over every saved reply of a chat, so a chat shown a page at a time still reports its whole usage."""
+
+    cost: float = 0  # billed by OpenRouter
+    output_tokens: int = 0
+    generation_s: float = 0
+    usage: TokenUsage = TokenUsage()
+
+
+class MessagePage(BaseModel):
+    """``GET /api/agent/sessions/{id}/messages?before=``: the messages just before one, oldest first."""
+
+    messages: list[AgentMessage]
+    has_older: bool
+
+
 class AgentSession(BaseModel):
     id: str
     title: str
@@ -388,6 +406,8 @@ class AgentSession(BaseModel):
     messages: list[AgentMessage] | None = None
     context: ContextUsage | None = None
     context_size: int | None = None  # this chat's context window (tokens); None = automatic
+    has_older: bool | None = None  # a paged read (`limit`/`from`): earlier messages exist (`/messages?before=`)
+    totals: SessionTotals | None = None  # a paged read: what all the chat's replies used, loaded or not
 
 
 class AgentImages(BaseModel):
@@ -622,10 +642,18 @@ class EvErrorReply(BaseModel):
     ref: str | None = None
 
 
+class EvAgentsUpdate(BaseModel):
+    type: Literal["agents.update"] = "agents.update"
+    area: str
+    session_id: str | None = None
+
+
+from .schemas_arena import EvArenaUpdate
+
 ServerEvent = Annotated[
     Union[EvHello, EvSystem, EvJobUpdate, EvModelUpdate, EvModelRemoved, EvRuntimeUpdate, EvLog, EvAgent,
           EvErrorReply, EvOpenRouterAccount, EvImagePreview, *WORKSPACE_SERVER_EVENTS, *GAME_SERVER_EVENTS,
-          *AUTOMATION_SERVER_EVENTS, *CONNECTOR_SERVER_EVENTS],
+          *AUTOMATION_SERVER_EVENTS, *CONNECTOR_SERVER_EVENTS, *SWARM_SERVER_EVENTS, EvAgentPlusUpdate, EvAgentsUpdate, EvArenaUpdate],
     Field(discriminator="type"),
 ]
 server_event_adapter: TypeAdapter[Any] = TypeAdapter(ServerEvent)

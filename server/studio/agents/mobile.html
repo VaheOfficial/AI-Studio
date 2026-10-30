@@ -1,0 +1,490 @@
+<!doctype html>
+
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Agents</title><link rel="manifest" href="/manifest.webmanifest">
+
+<style>body{font:16px system-ui;margin:0;background:Canvas;color:CanvasText;color-scheme:light dark}main{max-width:760px;margin:auto;padding:24px}input,textarea,select,button{font:inherit;box-sizing:border-box;padding:10px;border:1px solid GrayText;border-radius:6px;background:Canvas;color:CanvasText}input,textarea,select{width:100%;margin:8px 0}button{cursor:pointer;margin:6px 6px 6px 0}article{border-bottom:1px solid GrayText;padding:14px 0;white-space:pre-wrap;overflow-wrap:anywhere}label{display:block}#status{min-height:24px}h1{font-size:26px}textarea{min-height:100px}pre{overflow:auto}.actions{display:flex;flex-wrap:wrap}</style></head>
+
+<body><main><h1>Agents</h1><section id="connect"><label>Device token<input id="token" type="password" autocomplete="off"></label><button id="sign-in">Connect</button></section>
+
+<p id="status" role="status"></p><section id="work" hidden><div class="actions"><button id="refresh">Refresh</button><button id="disconnect">Disconnect</button><button id="enable-push">Enable notifications</button><button id="disable-push">Disable notifications</button></div>
+
+<label>Conversation<select id="sessions"></select></label><div id="messages"></div><label>Message<textarea id="content"></textarea></label><div class="actions"><button id="send">Send</button><button id="stop">Stop agent</button></div>
+
+<section><h2>Voice message</h2><label>Transcription model<select id="stt"></select></label><button id="record">Record</button><p>Review the transcript in the message box before sending.</p><h3>Continuous conversation</h3><label>Speech model<select id="tts"></select></label><label>Voice preset or profile<input id="voice" value="auto"></label><div class="actions"><button id="call">Start call</button><button id="end-call">End call</button><button id="interrupt">Interrupt speech</button></div><p>Uses local transcription and speech. During playback transcription is muted to prevent echoes. Tool approvals require their buttons.</p></section></section></main>
+
+<script>
+
+const byId = id => document.getElementById(id);
+
+let token = '', socket, recorder, stream, scopes = [];
+
+let callSocket, callContext, callStream, callActive = false, speaking = false, playback, playbackUrl, generation = 0, agentWorking = false, pendingSpeech = [], questionId, lastMessages = [], spoken = new Set();
+
+let speechJobId;
+const speechJobs = new Map(), speechWaiters = new Map();
+let voiceModels = [];
+byId('tts').onchange = () => { byId('voice').value = voiceModels.find(model => model.id === byId('tts').value)?.runtime === 'kokoro' ? 'af_heart' : 'auto'; };
+
+const status = text => { byId('status').textContent = text; };
+
+async function api(path, method = 'GET', body) {
+
+  const headers = { Authorization: 'Bearer ' + token };
+
+  let data = body;
+
+  if (body !== undefined && !(body instanceof FormData)) {
+
+    headers['Content-Type'] = 'application/json';
+
+    data = JSON.stringify(body);
+
+  }
+
+  const response = await fetch(path, { method, headers, body: data });
+
+  if (!response.ok) {
+
+    const error = await response.json();
+
+    throw Error(typeof error.detail === 'string' ? error.detail : 'Request failed');
+
+  }
+
+  return response.json();
+
+}
+
+async function refresh() {
+
+  const sid = byId('sessions').value;
+
+  if (!sid) return;
+
+  const data = await api('/sessions/' + sid);
+
+  if (sid !== byId('sessions').value || !token) return;
+
+  lastMessages = data.messages; questionId = undefined;
+
+  const articles = [];
+
+  for (const message of data.messages) {
+
+    const article = document.createElement('article');
+
+    const label = document.createElement('strong');
+
+    label.textContent = message.role === 'user' ? 'You' : 'Agent';
+
+    const content = document.createElement('p');
+
+    content.textContent = message.content;
+
+    article.append(label, content);
+
+    for (const call of message.tool_calls || []) {
+
+      if (call.status === 'pending_approval' && scopes.includes('approve')) {
+
+        const description = document.createElement('pre');
+
+        description.textContent = call.name + '\n' + JSON.stringify(call.args, null, 2);
+
+        article.append(description);
+
+        for (const [caption, approved] of [['Approve', true], ['Deny', false]]) {
+
+          const button = document.createElement('button');
+
+          button.textContent = caption;
+
+          button.onclick = () => api('/sessions/' + sid + '/approve/' + call.id, 'POST', { approved })
+
+            .then(refresh).catch(error => status(error.message));
+
+          article.append(button);
+
+        }
+
+      }
+
+      if (call.status === 'awaiting_input' && scopes.includes('chat') && call.display?.kind === 'question') {
+
+        questionId = call.id;
+
+        const question = document.createElement('p');
+
+        question.textContent = call.display.question;
+
+        const input = document.createElement('input');
+
+        input.setAttribute('aria-label', 'Answer to agent');
+
+        const submit = document.createElement('button');
+
+        submit.textContent = 'Send answer';
+
+        const answer = text => api('/sessions/' + sid + '/answer/' + call.id, 'POST', { answer: text })
+
+          .then(refresh).catch(error => status(error.message));
+
+        submit.onclick = () => answer(input.value);
+
+        article.append(question, input, submit);
+
+        for (const option of call.display.options || []) {
+
+          const button = document.createElement('button');
+
+          button.textContent = option;
+
+          button.onclick = () => answer(option);
+
+          article.append(button);
+
+        }
+
+      }
+
+    }
+
+    articles.push(article);
+
+  }
+
+  for (const artifact of data.artifacts || []) {
+
+    const article = document.createElement('article');
+
+    const title = document.createElement('strong');
+
+    title.textContent = artifact.title + ' · v' + artifact.version;
+
+    const content = document.createElement('pre');
+
+    content.textContent = artifact.content.slice(0, 16000);
+
+    article.append(title, content);
+
+    articles.push(article);
+
+  }
+
+  byId('messages').replaceChildren(...articles);
+
+  await readReply();
+
+}
+
+byId('sign-in').onclick = async () => {
+
+  try {
+
+    token = byId('token').value.trim();
+
+    const permissions = await api('/permissions');
+
+    scopes = permissions.scopes;
+
+    byId('enable-push').disabled = byId('disable-push').disabled = !scopes.includes('notifications');
+
+    byId('call').disabled = !scopes.includes('chat');
+
+    for (const id of ['send', 'stop', 'record']) byId(id).disabled = !scopes.includes('chat');
+
+    const sessions = await api('/sessions');
+
+    byId('sessions').replaceChildren(...sessions.map(session => {
+
+      const option = document.createElement('option');
+
+      option.value = session.id; option.textContent = session.title;
+
+      return option;
+
+    }));
+
+    byId('token').value = '';
+
+    byId('connect').hidden = true; byId('work').hidden = false;
+
+    const models = await api('/voice/models');
+
+    byId('stt').replaceChildren(...models.map(model => {
+
+      const option = document.createElement('option');
+
+      option.value = model.id; option.textContent = model.name;
+
+      return option;
+
+    }));
+
+    const voices = voiceModels = await api('/voice/speech-models');
+
+    byId('tts').replaceChildren(...voices.map(model => { const option = document.createElement('option'); option.value = model.id; option.textContent = model.name; return option; }));
+
+    await refresh();
+
+    socket?.close();
+
+    socket = new WebSocket((location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + location.host + '/events');
+
+    socket.onopen = () => socket.send(JSON.stringify({ token }));
+
+    socket.onmessage = message => {
+
+      const frame = JSON.parse(message.data), event = frame.event;
+
+      if (frame.type === 'job.update') { speechJobs.set(frame.job.id, frame.job); speechWaiters.get(frame.job.id)?.(frame.job); return; }
+
+      if (frame.session_id !== byId('sessions').value) return;
+
+      if (event?.type === 'start') agentWorking = true;
+
+      if (event?.type === 'done' || event?.type === 'error') { agentWorking = false; refresh().then(flushSpeech).catch(error => status(error.message)); }
+
+      if (event?.type === 'done' || event?.type === 'tool.approval' || event?.type === 'tool.call' && event.call.status === 'awaiting_input') {
+
+        refresh().catch(error => status(error.message));
+
+      }
+
+      if (event?.type === 'error') status(event.message);
+
+    };
+
+    socket.onclose = () => { if (token) status('Event connection closed. Refresh or reconnect.'); };
+
+    status('Connected');
+
+  } catch (error) { token = ''; status(error.message); }
+
+};
+
+byId('sessions').onchange = () => { endCall(); return refresh().catch(error => status(error.message)); };
+
+byId('refresh').onclick = () => refresh().catch(error => status(error.message));
+
+function disconnect() {
+
+  endCall();
+
+  token = ''; socket?.close();
+
+  if (recorder?.state === 'recording') { recorder.onstop = null; recorder.stop(); }
+
+  stream?.getTracks().forEach(track => track.stop());
+
+  byId('messages').replaceChildren(); byId('sessions').disabled = false;
+
+  byId('record').textContent = 'Record'; byId('work').hidden = true; byId('connect').hidden = false;
+
+  status('Disconnected');
+
+}
+
+byId('disconnect').onclick = disconnect;
+
+window.addEventListener('beforeunload', disconnect);
+
+byId('send').onclick = () => api('/sessions/' + byId('sessions').value + '/send', 'POST', { content: byId('content').value })
+
+  .then(() => { byId('content').value = ''; status('Message sent'); }).catch(error => status(error.message));
+
+byId('stop').onclick = () => api('/sessions/' + byId('sessions').value + '/stop', 'POST')
+
+  .then(() => status('Agent stopped')).catch(error => status(error.message));
+
+byId('record').onclick = async () => {
+
+  try {
+
+    if (recorder?.state === 'recording') { recorder.stop(); return; }
+
+    const sid = byId('sessions').value, modelId = byId('stt').value;
+
+    if (!modelId) throw Error('Install a local transcription model in Studio first');
+
+    byId('record').disabled = true;
+
+    const media = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+    if (!token) { media.getTracks().forEach(track => track.stop()); return; }
+
+    stream = media;
+
+    const instance = new MediaRecorder(media), chunks = [];
+
+    recorder = instance;
+
+    instance.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
+
+    instance.onstop = async () => {
+
+      media.getTracks().forEach(track => track.stop());
+
+      byId('record').textContent = 'Record'; byId('record').disabled = true;
+
+      try {
+
+        const form = new FormData();
+
+        form.append('file', new Blob(chunks, { type: instance.mimeType }), instance.mimeType.includes('mp4') ? 'recording.m4a' : 'recording.webm');
+
+        form.append('model_id', modelId);
+
+        status('Transcribing');
+
+        const result = await api('/sessions/' + sid + '/transcribe', 'POST', form);
+
+        if (token && sid === byId('sessions').value) { byId('content').value = result.text; status('Review your message'); }
+
+      } catch (error) { status(error.message); }
+
+      finally { byId('record').disabled = !scopes.includes('chat'); byId('sessions').disabled = false; }
+
+    };
+
+    instance.start(); byId('sessions').disabled = true;
+
+    byId('record').textContent = 'Stop recording'; byId('record').disabled = false;
+
+  } catch (error) { byId('record').disabled = !scopes.includes('chat'); status(error.message); }
+
+};
+
+
+
+function interruptSpeech() { if (speechJobId) api('/voice/jobs/' + speechJobId,'DELETE').catch(() => {}); speechJobId = undefined; generation++; playback?.pause(); playback = undefined; if (playbackUrl) URL.revokeObjectURL(playbackUrl); playbackUrl = undefined; speaking = false; }
+
+function endCall() { callActive = false; interruptSpeech(); callSocket?.close(); callSocket = undefined; callStream?.getTracks().forEach(track => track.stop()); callStream = undefined; if (callContext) callContext.close().catch(() => {}); callContext = undefined; pendingSpeech = []; byId('sessions').disabled = false; byId('call').disabled = !scopes.includes('chat'); }
+
+async function flushSpeech() {
+
+  if (!callActive || agentWorking || !pendingSpeech.length) return;
+
+  const text = pendingSpeech.join(' '), count = pendingSpeech.length;
+
+  try { if (questionId) await api('/sessions/' + byId('sessions').value + '/answer/' + questionId,'POST',{ answer:text }); else await api('/sessions/' + byId('sessions').value + '/send','POST',{ content:text }); pendingSpeech.splice(0,count); agentWorking = true; }
+
+  catch (error) { status('Speech queued: ' + error.message); }
+
+}
+
+function waitSpeech(job) {
+
+  return new Promise((resolve,reject) => {
+
+    const finish = value => { if (!['done','error','cancelled'].includes(value.status)) return; clearTimeout(timer); speechWaiters.delete(job.id); speechJobs.delete(job.id); value.status === 'done' ? resolve(value) : reject(Error(value.error || 'Speech cancelled')); };
+
+    const timer = setTimeout(() => { speechWaiters.delete(job.id); reject(Error('Speech timed out')); },180000);
+
+    speechWaiters.set(job.id,finish); finish(speechJobs.get(job.id) || job);
+
+  });
+
+}
+
+async function readReply() {
+
+  if (!callActive || speaking || agentWorking) return;
+
+  const reply = [...lastMessages].reverse().find(message => message.role === 'assistant' && message.content?.trim());
+
+  if (!reply || spoken.has(reply.id) || !byId('tts').value) return;
+
+  spoken.add(reply.id); speaking = true; const ticket = generation;
+
+  try {
+
+    const job = await api('/sessions/' + byId('sessions').value + '/speak','POST',{ model_id:byId('tts').value,voice_id:byId('voice').value,text:reply.content.replace(/[#*_`]/g,'').slice(0,4000) });
+
+    if (ticket !== generation || !callActive) { api('/voice/jobs/' + job.id,'DELETE').catch(() => {}); return; }
+    speechJobId = job.id; const result = await waitSpeech(job); speechJobId = undefined; if (ticket !== generation || !callActive) return;
+
+    const response = await fetch(result.result.outputs[0].url,{ headers:{ Authorization:'Bearer ' + token } }); if (!response.ok) throw Error('Speech audio unavailable');
+
+    const blob = await response.blob(); if (ticket !== generation || !callActive) return;
+
+    playbackUrl = URL.createObjectURL(blob); playback = new Audio(playbackUrl);
+
+    playback.onended = () => { speaking = false; if (playbackUrl) URL.revokeObjectURL(playbackUrl); playbackUrl = undefined; playback = undefined; };
+
+    await playback.play();
+
+  } catch(error) { if (ticket === generation) { speaking = false; status(error.message); } }
+
+}
+
+byId('end-call').onclick = endCall; byId('interrupt').onclick = interruptSpeech;
+
+byId('call').onclick = async () => {
+
+  if (callActive) return;
+
+  const model = byId('stt').value, sid = byId('sessions').value;
+
+  if (!model || !sid) { status('Select a conversation and local transcription model'); return; }
+
+  callActive = true; const ticket = ++generation; byId('call').disabled = true; byId('sessions').disabled = true; spoken = new Set(lastMessages.map(message => message.id));
+
+  try {
+
+    const media = await navigator.mediaDevices.getUserMedia({audio:{channelCount:1,echoCancellation:true,noiseSuppression:true}});
+
+    if (!callActive || ticket !== generation) { media.getTracks().forEach(track => track.stop()); return; }
+
+    callStream = media;
+
+    const ws = callSocket = new WebSocket((location.protocol === 'https:' ? 'wss:' : 'ws:') + '//' + location.host + '/sessions/' + sid + '/dictate');
+
+    ws.onopen = () => ws.send(JSON.stringify({token, model_id:model}));
+
+    ws.onmessage = event => { if (callSocket !== ws) return; const value = JSON.parse(event.data); if (value.type === 'error') status(value.message); if (value.type === 'partial') status(value.text); if (value.final_kind === 'utterance' && value.text.trim()) { if (pendingSpeech.length >= 20) { status('Speech queue is full; finish pending messages first'); endCall(); return; } pendingSpeech.push(value.text); flushSpeech(); } };
+
+    ws.onclose = () => { if (callSocket === ws) { endCall(); status('Voice connection ended'); } };
+
+    const ctx = callContext = new AudioContext({sampleRate:16000});
+
+    const module = URL.createObjectURL(new Blob(["class Tap extends AudioWorkletProcessor {process(inputs){const data=inputs[0][0];if(data)this.port.postMessage(data.slice());return true}}registerProcessor('call-tap',Tap)"],{type:'text/javascript'}));
+
+    try { await ctx.audioWorklet.addModule(module); } finally { URL.revokeObjectURL(module); }
+
+    if (!callActive || callSocket !== ws) return;
+
+    const node = new AudioWorkletNode(ctx,'call-tap'); let samples = [], length = 0;
+
+    node.port.onmessage = event => { if (!callActive || callSocket !== ws) return; samples.push(speaking ? new Float32Array(event.data.length) : event.data); length += event.data.length; if (length < 1600) return; const pcm = new Int16Array(length); let i=0; for(const chunk of samples)for(const value of chunk)pcm[i++] = Math.max(-1,Math.min(1,value))*32767; samples=[];length=0;if(ws.readyState===1 && ws.bufferedAmount<64000)ws.send(pcm.buffer); };
+
+    ctx.createMediaStreamSource(media).connect(node); node.connect(ctx.destination); status('Listening');
+
+  } catch(error) { endCall(); status(error.message); }
+
+};
+
+byId('enable-push').onclick = async () => {
+
+  try {
+
+    if (!window.isSecureContext || !('PushManager' in window)) throw Error('Push requires HTTPS and a browser with push support');
+
+    const key = await api('/push/key'); const permission = await Notification.requestPermission(); if (permission !== 'granted') throw Error('Notification permission was not granted');
+
+    const registration = await navigator.serviceWorker.register('/mobile-sw.js'); await navigator.serviceWorker.ready;
+
+    const encoded = key.public_key.replace(/-/g,'+').replace(/_/g,'/'); const bytes = Uint8Array.from(atob(encoded + '='.repeat((4 - encoded.length%4)%4)), ch => ch.charCodeAt(0));
+
+    const subscription = await registration.pushManager.getSubscription() || await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:bytes});
+
+    const value = subscription.toJSON(); await api('/push/subscribe','POST',{endpoint:value.endpoint,keys:value.keys}); status('Notifications enabled. Encrypted status updates use your browser’s push relay.');
+
+  } catch(error) { status(error.message); }
+
+};
+
+byId('disable-push').onclick = async () => { try { await api('/push/subscriptions','DELETE'); const registration = await navigator.serviceWorker.getRegistration('/'); const subscription = await registration?.pushManager.getSubscription(); await subscription?.unsubscribe(); status('Notifications disabled'); } catch(error) { status(error.message); } };
+
+</script></body></html>
+

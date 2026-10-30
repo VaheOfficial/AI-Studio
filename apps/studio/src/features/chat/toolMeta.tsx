@@ -9,6 +9,7 @@ import {
   Calculator,
   Camera,
   Clapperboard,
+  CheckCircle2,
   Clock,
   CloudSun,
   Cpu,
@@ -16,8 +17,11 @@ import {
   Eye,
   FilePen,
   FileSearch,
+  FlaskConical,
   FileText,
+  Flag,
   FolderTree,
+  Gavel,
   Globe,
   ImagePlus,
   Images,
@@ -37,6 +41,7 @@ import {
   RotateCcw,
   ScanText,
   Search,
+  Send,
   Split,
   Square,
   SquareCode,
@@ -50,6 +55,56 @@ import {
 
 /** `writing`: what the model is doing while it writes a long call of this kind ("Writing Python"). */
 const TOOL_META: Record<string, { icon: ReactNode; verb: string; primary?: string; mono?: boolean; writing?: string }> = {
+  check_model_tools: { icon: <Cpu />, verb: 'Verify model tools', primary: 'model' },
+  structured_output: { icon: <Cpu />, verb: 'Generate structured result' },
+  review_code: { icon: <FileText />, verb: 'Review source code' },
+  animation_catalog: { icon: <Clapperboard />, verb: 'Explore animation components' },
+  animation_recipe: { icon: <Clapperboard />, verb: 'Compose animation', primary: 'recipe' },
+  animation_project: { icon: <Clapperboard />, verb: 'Direct animation project', primary: 'action' },
+  animation_validate: { icon: <CheckCircle2 />, verb: 'Check animation' },
+  animation_render: { icon: <Clapperboard />, verb: 'Render animation' },
+  animation_prepare_voice: { icon: <AudioLines />, verb: 'Prepare narration' },
+  animation_analyze_audio: { icon: <AudioLines />, verb: 'Measure soundtrack timing', primary: 'source' },
+  setup_document_ocr: { icon: <FileText />, verb: 'Set up local OCR' },
+  watch_source: { icon: <Eye />, verb: 'Watch a source', primary: 'name' },
+  monitor_status: { icon: <Eye />, verb: 'Inspect source watches' },
+  pause_source_watch: { icon: <Square />, verb: 'Pause source watch', primary: 'id' },
+  channel_messages: { icon: <MessageCircleQuestion />, verb: 'Read channel messages', primary: 'channel_id' },
+  channel_reply: { icon: <Send />, verb: 'Reply through channel', primary: 'text' },
+  google_workspace_file: { icon: <FilePen />, verb: 'Work with Google files', primary: 'action' },
+  git_workspace: { icon: <SquareCode />, verb: 'Work with repository', primary: 'action' },
+  followup_delegation: { icon: <UserRoundPlus />, verb: 'Continue subagent', primary: 'message' },
+  replay_demonstration: { icon: <RotateCcw />, verb: 'Replay reviewed task', primary: 'skill_id' },
+  research_search: { icon: <Search />, verb: 'Search the web', primary: 'query' },
+  read_social_thread: { icon: <MessageCircleQuestion />, verb: 'Read social thread', primary: 'url' },
+  inspect_media: { icon: <Clapperboard />, verb: 'Inspect media', primary: 'source' },
+  office_file: { icon: <FilePen />, verb: 'Work with a document', primary: 'action' },
+  office_file_help: { icon: <BookOpen />, verb: 'Document tool guide', primary: 'action' },
+  notify_user: { icon: <MessageCircleQuestion />, verb: 'Send an update', primary: 'title' },
+  plugin_list: { icon: <Plug />, verb: 'List plugins' },
+  plugin_read_file: { icon: <BookOpen />, verb: 'Read plugin file', primary: 'path' },
+  start_mission: { icon: <Flag />, verb: 'Start persistent work', primary: 'objective' },
+  wake_schedule: { icon: <AlarmClock />, verb: 'Schedule wake', primary: 'wake_at' },
+  search_tools: { icon: <Search />, verb: 'Find capabilities', primary: 'query' },
+  load_tools: { icon: <Wrench />, verb: 'Load tool schemas' },
+  execute_tools: { icon: <ListChecks />, verb: 'Execute tool sequence' },
+  run_tool_script: { icon: <SquareCode />, verb: 'Compose tools', primary: 'code' },
+  delegate_task: { icon: <Split />, verb: 'Delegate task', primary: 'objective' },
+  delegation_status: { icon: <ListChecks />, verb: 'Inspect subagents' },
+  cancel_delegation: { icon: <Square />, verb: 'Stop subagent', primary: 'id' },
+  knowledge_search: { icon: <Brain />, verb: 'Retrieve knowledge', primary: 'query' },
+  knowledge_save: { icon: <Brain />, verb: 'Save knowledge', primary: 'text' },
+  skill_read: { icon: <BookOpen />, verb: 'Read skill', primary: 'name' },
+  invoke_skill: { icon: <Wrench />, verb: 'Use skill', primary: 'name' },
+  artifact_save: { icon: <FilePen />, verb: 'Save artifact', primary: 'title' },
+  artifact_read: { icon: <FileText />, verb: 'Read artifact', primary: 'id' },
+  browser_action: { icon: <Globe />, verb: 'Browser action', primary: 'action' },
+  computer_action: { icon: <MousePointerClick />, verb: 'Desktop action', primary: 'action' },
+  consult_advisor: { icon: <Telescope />, verb: 'Consult advisor', primary: 'question' },
+  index_documents: { icon: <FileSearch />, verb: 'Index documents', primary: 'collection' },
+  search_documents: { icon: <Search />, verb: 'Search documents', primary: 'query' },
+  connector_resources: { icon: <Plug />, verb: 'Discover app resources', primary: 'connector_id' },
+  connector_read_resource: { icon: <Plug />, verb: 'Read app resource', primary: 'uri' },
   system_info: { icon: <Cpu />, verb: 'Checked system' },
   list_models: { icon: <Boxes />, verb: 'Listed models', primary: 'kind' },
   search_catalog: { icon: <Search />, verb: 'Searched catalog', primary: 'query' },
@@ -94,6 +149,20 @@ const TOOL_META: Record<string, { icon: ReactNode; verb: string; primary?: strin
   run_python: { icon: <SquareCode />, verb: 'Ran Python', writing: 'Writing Python' },
   reset_python: { icon: <RotateCcw />, verb: 'Restarted Python' },
   read_skill: { icon: <BookOpen />, verb: 'Read guide', primary: 'name' },
+  mission_status: { icon: <ListChecks />, verb: 'Read mission' },
+  plan_work: { icon: <ListTodo />, verb: 'Plan mission work', writing: 'Planning work' },
+  select_work: { icon: <ListChecks />, verb: 'Start work', primary: 'work_id' },
+  finish_work: { icon: <Flag />, verb: 'Work completed', primary: 'work_id' },
+  research_tool: { icon: <Telescope />, verb: 'Research and build tool', primary: 'name', writing: 'Defining the missing tool' },
+  invoke_chat_tool: { icon: <Wrench />, verb: 'Use chat tool' },
+  mission_context: { icon: <Search />, verb: 'Retrieve mission evidence' },
+  propose_alternative: { icon: <FlaskConical />, verb: 'Explore another approach', primary: 'obstacle' },
+  supersede_work: { icon: <ArrowLeftRight />, verb: 'Replace work branch', primary: 'reason' },
+  record_evidence: { icon: <FileSearch />, verb: 'Record evidence', primary: 'explanation' },
+  complete_mission: { icon: <Flag />, verb: 'Mission completed', primary: 'result' },
+  record_learning: { icon: <BookOpen />, verb: 'Retain finding', primary: 'text' },
+  resolve_action: { icon: <Eye />, verb: 'Reconcile interrupted action', primary: 'explanation' },
+  observe_artifact: { icon: <FileSearch />, verb: 'Inspect artifact', primary: 'path' },
   get_weather: { icon: <CloudSun />, verb: 'Weather', primary: 'location' },
   calculate: { icon: <Calculator />, verb: 'Calculated', primary: 'expression', mono: true },
   convert: { icon: <ArrowLeftRight />, verb: 'Converted', primary: 'from_unit' },
@@ -104,15 +173,63 @@ const TOOL_META: Record<string, { icon: ReactNode; verb: string; primary?: strin
   automation_delete: { icon: <AlarmClock />, verb: 'Delete automation', primary: 'id' },
   remember: { icon: <Brain />, verb: 'Remembered', primary: 'fact' },
   forget: { icon: <Brain />, verb: 'Forgot', primary: 'id' },
+  // A swarm agent's own tools
+  ledger: { icon: <ListChecks />, verb: 'Read the ledger', primary: 'item_id' },
+  plan_items: { icon: <ListTodo />, verb: 'Planned', writing: 'Writing the plan' },
+  goal_reached: { icon: <Flag />, verb: 'Goal reached', primary: 'summary' },
+  hand_off: { icon: <Send />, verb: 'Handed off', primary: 'summary', writing: 'Writing the report' },
+  verdict: { icon: <Gavel />, verb: 'Verdict', primary: 'summary', writing: 'Writing the verdict' },
+  ask_owner: { icon: <MessageCircleQuestion />, verb: 'Asked the owner', primary: 'question' },
+  note: { icon: <PenLine />, verb: 'Noted', primary: 'text' },
 }
 
 /** A connector's tool (`<app>__<tool>`): "github · search issues". */
 function connectorMeta(name: string) {
   const [app, tool] = name.split('__')
-  return tool ? { icon: <Plug />, verb: `${app} · ${tool.replaceAll('_', ' ')}` } : undefined
+  return tool ? { icon: <Plug />, verb: `${app.startsWith('api_') ? 'Application' : app.replaceAll('_', ' ')} · ${tool.replaceAll('_', ' ')}` } : undefined
 }
 
 /** Icon and wording for a tool by name (connector tools included). */
 export function toolMeta(name: string) {
-  return TOOL_META[name] ?? connectorMeta(name) ?? { icon: <Wrench />, verb: name }
+  return TOOL_META[name] ?? connectorMeta(name) ?? { icon: <Wrench />, verb: name.replaceAll('_', ' ').replace(/^./, letter => letter.toUpperCase()) }
+}
+
+/** Catalog copy describes the capability, rather than a completed conversation step. */
+export function toolLabel(name: string) {
+  return toolMeta(name).verb
+    .replace(/^Asked you$/, 'Ask a question').replace(/^Created /, 'Create ').replace(/^Updated /, 'Update ')
+    .replace(/^Listed /, 'List ').replace(/^Searched /, 'Search ').replace(/^Checked /, 'Check ')
+    .replace(/^Looked at$/, 'View an image').replace(/^Researched$/, 'Research a topic')
+    .replace(/^Ran Python$/, 'Run Python').replace(/^Restarted /, 'Restart ').replace(/^Calculated$/, 'Calculate')
+    .replace(/^Converted$/, 'Convert units').replace(/^Remembered$/, 'Remember a fact').replace(/^Forgot$/, 'Forget a fact')
+}
+
+const SUMMARIES: Record<string, string> = {
+  artifact_read: 'Open saved work and earlier revisions.',
+  artifact_save: 'Create or update a document, page or other artifact.',
+  ask_user: 'Ask a question and wait for your answer.',
+  automation_create: 'Schedule a task or recurring check.',
+  automation_update: 'Change a scheduled task, its timing or instructions.',
+  automation_list: 'See scheduled tasks and their next runs.',
+  automation_delete: 'Remove a scheduled task.',
+  browser_action: 'Interact with tabs, forms, downloads and browser diagnostics.',
+  browser_click: 'Click a link, button or other page element.',
+  browser_navigate: 'Open a webpage in the conversation’s browser.',
+  browser_read: 'Read the current page and its visible content.',
+  browser_screenshot: 'Capture the current browser view.',
+  browser_type: 'Enter text into a webpage.',
+  office_file: 'Create, edit and inspect Word, Excel, PowerPoint and PDF files.',
+  office_file_help: 'Look up supported document operations and their inputs.',
+  research_search: 'Find webpages, images, news and public social posts.',
+  inspect_media: 'Inspect audio or video and sample frames at specific times.',
+  search_tools: 'Find a tool that fits the current task.',
+  load_tools: 'Load the inputs needed to use a discovered tool.',
+  delegate_task: 'Assign a focused task to a subagent.',
+  research_tool: 'Research, build and validate a missing tool.',
+  knowledge_search: 'Find relevant facts saved for this agent or conversation.',
+  knowledge_save: 'Save a fact with its source and scope.',
+}
+
+export function toolSummary(name: string, description: string) {
+  return SUMMARIES[name] ?? description.split(/(?<=\.)\s/)[0]
 }

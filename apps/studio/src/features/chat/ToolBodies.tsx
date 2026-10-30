@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react'
-import { CheckCircle2, Circle, CircleDot, FileText, Folder, Globe, Hand, ListChecks, SquareTerminal } from 'lucide-react'
+import { CheckCircle2, Circle, CircleDot, FileText, Folder, Globe, Hand, ListChecks, SquareTerminal, Play } from 'lucide-react'
 import { Badge, Button, DiffView, Spinner, cn } from '@studio/ui'
 import type { ToolDisplay } from '../../api/contracts/workspace'
 import type { ToolCall } from '../../api/types'
 import { useWorkspacePanel } from './workspace/panel'
 import { useChatLightbox } from './lightbox'
 import { AutomationBody, CalcBody, ClockBody, ConversionBody, PythonBody, WeatherBody } from './WidgetBodies'
+import AppFrame from '../agents/AppFrame'
 import s from './ToolCallCard.module.css'
 
 /**
@@ -13,6 +14,29 @@ import s from './ToolCallCard.module.css'
  * typed `display` the server attaches to a call; calls without a display fall back to the generic details.
  */
 type Body<K extends ToolDisplay['kind']> = (props: { call: ToolCall; display: Extract<ToolDisplay, { kind: K }> }) => ReactNode
+
+const AnimationBody: Body<'animation'> = ({ display }) => <div className={s.bodyBlock}>
+  <div className={s.animationHead}><Play size={14} /><strong>{display.title}</strong><Badge tone="success">{display.deterministic ? 'Deterministic' : 'Preview'}</Badge><span className={s.meta}>{display.scenes} scenes · {display.duration.toFixed(1)}s · {display.frames} frames</span></div>
+  {display.width && display.height && <span className={s.meta}>{display.width}×{display.height}{display.fps ? ` · ${display.fps} fps` : ''}{display.quality ? ` · ${display.quality === 'final' ? 'Final quality' : display.quality === 'draft' ? 'Draft quality' : 'Standard quality'}` : ''}</span>}
+  <a href={display.preview} target="_blank" rel="noreferrer"><img className={s.animationStoryboard} src={display.storyboard} alt={`${display.title}: sampled scene frames`} loading="lazy" /></a>
+  <div className={s.bodyActions}><a className={s.link} href={display.preview} target="_blank" rel="noreferrer">Open animation</a><a className={s.link} href={display.composition} download>Composition</a><a className={s.link} href={display.report} download>Render report</a></div>
+  {display.warnings.map((warning, index) => <p className={s.meta} key={index}>{warning}</p>)}
+</div>
+
+const AudioTimingBody: Body<'audio_timing'> = ({ display }) => {
+  const duration = Math.max(display.duration, .001)
+  const peak = Math.max(...display.energy_by_second.map(bin => bin.rms), .001)
+  return <div className={s.bodyBlock}>
+    <div className={s.animationHead}><strong>Track timing</strong><span className={s.meta}>{display.duration.toFixed(1)}s · {display.peak_dbfs.toFixed(1)} dBFS peak · {display.hits.length} onsets · {display.pauses.length} quiet gaps</span></div>
+    <svg className={s.audioEnvelope} viewBox="0 0 600 90" preserveAspectRatio="none" role="img" aria-label={`Audio energy and ${display.hits.length} detected onsets over ${display.duration.toFixed(1)} seconds`}>
+      {display.energy_by_second.map((bin, i) => <rect key={i} x={bin.start / duration * 600} y={78 - bin.rms / peak * 64} width={Math.max(.5, (bin.end - bin.start) / duration * 600 - 1)} height={bin.rms / peak * 64} fill="currentColor" opacity=".3"><title>{bin.start.toFixed(1)}–{bin.end.toFixed(1)}s energy</title></rect>)}
+      {display.pauses.map((gap, i) => <rect key={`gap-${i}`} x={gap.start / duration * 600} y="80" width={(gap.end - gap.start) / duration * 600} height="3" className={s.audioQuiet}><title>Quiet gap: {gap.start.toFixed(2)}–{gap.end.toFixed(2)}s</title></rect>)}
+      {display.hits.map((hit, i) => <circle key={`hit-${i}`} cx={hit.time / duration * 600} cy="7" r="2.4" fill="currentColor"><title>Onset: {hit.time.toFixed(2)}s</title></circle>)}
+    </svg>
+    <div className={s.audioScale}><span>0s</span><span>{display.duration.toFixed(1)}s</span></div>
+    <p className={s.meta}>Energy per second; dots mark detected onsets. {display.tempo_estimate_bpm !== null ? `Tempo estimate: ${display.tempo_estimate_bpm.toFixed(1)} BPM. ` : 'Tempo not established. '}Use these as timing guides; they are not word timings.</p>
+  </div>
+}
 
 const TerminalBody: Body<'terminal'> = ({ display }) => {
   const showTerminal = useWorkspacePanel((p) => p.showTerminal)
@@ -205,6 +229,9 @@ const QuestionBody: Body<'question'> = ({ display }) =>
   )
 
 const BODIES: { [K in ToolDisplay['kind']]: Body<K> } = {
+  animation: AnimationBody,
+  audio_timing: AudioTimingBody,
+  app: ({ display }) => <AppFrame display={display} />,
   terminal: TerminalBody,
   diff: DiffBody,
   file: FileBody,

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import json
 import re
 import uuid
@@ -49,6 +50,12 @@ def slug(name: str) -> str:
     return s[:24] or "connector"
 
 
+def tool_name(prefix: str, name: str) -> str:
+    full = f'{prefix}{SEP}{name}'
+    clean = re.sub(r'[^a-zA-Z0-9_-]', '_', full)
+    return full if len(full) <= 64 and clean == full else clean[:51] + '_' + hashlib.sha256(full.encode()).hexdigest()[:12]
+
+
 # ------------------------------ storage ------------------------------
 
 
@@ -57,6 +64,16 @@ def init() -> None:
         id TEXT PRIMARY KEY, name TEXT NOT NULL, transport TEXT NOT NULL, command TEXT, args TEXT NOT NULL,
         env TEXT NOT NULL, url TEXT, headers TEXT NOT NULL, enabled INTEGER NOT NULL, approval TEXT NOT NULL,
         created_at TEXT NOT NULL)""")
+    from .agents import vault
+    if vault.available():
+        from .agent_plus.store import atomic
+        for entry in _all_raw():
+            if any(not v.startswith(vault.PREFIX) for values in (entry['env'], entry['headers']) for v in values.values()):
+                try:
+                    with atomic():
+                        _write(entry)
+                except ValueError:
+                    events.log('warn', 'connectors', 'Credential migration deferred; OS keychain unavailable')
 
 
 def _raw(connector_id: str) -> dict[str, Any]:
@@ -74,6 +91,13 @@ def _all_raw() -> list[dict[str, Any]]:
 
 
 def _write(d: dict[str, Any]) -> None:
+    from .agents import vault
+    if d.get("env") or d.get("headers"):
+        try:
+            d = {**d, "env": {k: vault.protect(v) for k, v in d.get("env", {}).items()},
+                 "headers": {k: vault.protect(v) for k, v in d.get("headers", {}).items()}}
+        except ValueError as exc:
+            raise ConnectorError(str(exc)) from exc
     values = [d["id"], d["name"], d["transport"], d.get("command"), json.dumps(d.get("args") or []),
               json.dumps(d.get("env") or {}), d.get("url"), json.dumps(d.get("headers") or {}), int(d["enabled"]),
               d["approval"], d["created_at"]]
@@ -97,6 +121,36 @@ def _validate(d: dict[str, Any], exclude_id: str | None = None) -> None:
 class ConnectorManager:
     def __init__(self) -> None:
         self._live: dict[str, _Live] = {}
+        self._call_locks: dict[str, asyncio.Lock] = {}
+        self._call_contexts: dict[str, Any] = {}
+
+    async def _elicit(self, cid: str, params: Any) -> Any:
+        from mcp.types import ElicitResult
+        ctx = self._call_contexts.get(cid)
+        if ctx is None or ctx.ask is None:
+            return ElicitResult(action='decline')
+        if params.mode == 'url':
+            from .agents.oauth import validate_url
+            validate_url(params.url)
+            answer = await ctx.ask(params.message + '\nOpen this address for the secure handoff: ' + params.url,
+                                   ['Completed', 'Cancel'])
+            return ElicitResult(action='accept' if answer == 'Completed' else 'cancel')
+        schema = params.requested_schema
+        if hasattr(schema, 'model_dump'):
+            schema = schema.model_dump(by_alias=True)
+        properties = schema.get('properties', {})
+        if any(re.search(r'password|secret|token|card|cvv|otp', name, re.I) for name in properties):
+            return ElicitResult(action='decline')
+        answer = await ctx.ask(params.message + '\nReply with JSON matching these fields:\n' + json.dumps(schema), ['Cancel'])
+        if answer == 'Cancel':
+            return ElicitResult(action='cancel')
+        try:
+            value = json.loads(answer)
+            from .agent_plus.runner import check_schema
+            check_schema(value, schema)
+            return ElicitResult(action='accept', content=value)
+        except (ValueError, TypeError):
+            return ElicitResult(action='decline')
 
     # ---- views ----
 
@@ -104,7 +158,7 @@ class ConnectorManager:
         live = self._live.get(d["id"])
         status: ConnectorStatus = "disabled" if not d["enabled"] else (live.status if live else "connecting")
         prefix = slug(d["name"])
-        tools = [ConnectorTool(name=t["name"], agent_name=f"{prefix}{SEP}{t['name']}"[:64],
+        tools = [ConnectorTool(name=t["name"], agent_name=tool_name(prefix, t['name']),
                                description=(t.get("description") or "")[:500])
                  for t in (live.tools if live and d["enabled"] else [])]
         return Connector(**{**d, "env": {k: MASK for k in d["env"]}, "headers": {k: MASK for k in d["headers"]}},
@@ -198,10 +252,15 @@ class ConnectorManager:
 
     async def _session(self, d: dict[str, Any], live: _Live) -> None:
         from mcp import Client
+        from .agents import oauth
 
         try:
+            d = await oauth.authorized_config(d)
+            live.active_headers = d.get("headers", {})
             async with asyncio.timeout(CONNECT_TIMEOUT_S):
-                client = Client(_server(d))
+                async def elicit(context, params):
+                    return await self._elicit(d['id'], params)
+                client = Client(_server(d), elicitation_callback=elicit)
                 await client.__aenter__()
             try:
                 tools: list[dict[str, Any]] = []
@@ -210,7 +269,8 @@ class ConnectorManager:
                     page = await client.list_tools(cursor=cursor)
                     for t in page.tools:
                         schema = _get(t, "inputSchema", "input_schema") or {"type": "object", "properties": {}}
-                        tools.append({"name": t.name, "description": t.description or "", "inputSchema": schema})
+                        tools.append({"name": t.name, "description": t.description or "", "inputSchema": schema,
+                                      'meta': getattr(t, 'meta', None) or {}})
                     cursor = _get(page, "nextCursor", "next_cursor")
                     if not cursor:
                         break
@@ -241,11 +301,14 @@ class ConnectorManager:
                 continue
             prefix = slug(d["name"])
             for t in live.tools:
+                visibility = t.get('meta',{}).get('ui',{}).get('visibility', ['model','app'])
+                if 'model' not in visibility:
+                    continue
                 schema = dict(t["inputSchema"])
                 schema.setdefault("type", "object")
                 schema.setdefault("properties", {})
                 desc = f"[{d['name']} connector] {t['description']}".strip()
-                out.append((f"{prefix}{SEP}{t['name']}"[:64], desc[:1024], schema, d["approval"] == "ask"))
+                out.append((tool_name(prefix, t['name']), desc[:1024], schema, d["approval"] == "ask"))
         return out
 
     def summary(self) -> list[tuple[str, int]]:
@@ -256,15 +319,31 @@ class ConnectorManager:
     def owns(self, agent_name: str) -> bool:
         return SEP in agent_name and any(agent_name == n for n, *_ in self.tool_specs())
 
-    async def call(self, agent_name: str, args: dict[str, Any]) -> tuple[bool, str, list[Path]]:
+    async def call(self, agent_name: str, args: dict[str, Any], ctx: Any = None, raw: bool = False, rich: bool = False) -> Any:
         """Run a connector tool: (ok, text for the model, image files it returned)."""
         prefix, _, tool = agent_name.partition(SEP)
         d = next((x for x in _all_raw() if slug(x["name"]) == prefix), None)
         live = self._live.get(d["id"]) if d else None
         if d is None or live is None or live.client is None:
             raise ConnectorError(f"The connector for {agent_name} isn't connected")
-        name = next((t["name"] for t in live.tools if f"{prefix}{SEP}{t['name']}"[:64] == agent_name), tool)
-        result = await live.client.call_tool(name, args, read_timeout_seconds=CALL_TIMEOUT_S)
+        name = next((t["name"] for t in live.tools if tool_name(prefix, t['name']) == agent_name), tool)
+        async with self._call_locks.setdefault(d['id'], asyncio.Lock()):
+            from .agents import oauth
+            authorized = await oauth.authorized_config(d)
+            # A refreshed token requires a new HTTP transport; never replay the original operation.
+            if authorized.get('headers', {}) != getattr(live, 'active_headers', d.get('headers', {})):
+                await self._stop(d['id'])
+                live = self._start(d)
+                await asyncio.wait_for(live.ready.wait(), CONNECT_TIMEOUT_S + 5)
+                if live.client is None:
+                    raise ConnectorError(live.error or 'Connection could not refresh authorization')
+            self._call_contexts[d['id']] = ctx
+            try:
+                result = await live.client.call_tool(name, args, read_timeout_seconds=CALL_TIMEOUT_S)
+            finally:
+                self._call_contexts.pop(d['id'], None)
+        if raw:
+            return result.model_dump(by_alias=True, exclude_none=True)
         texts, images = [], []
         for part in result.content or []:
             kind = getattr(part, "type", "")
@@ -283,7 +362,8 @@ class ConnectorManager:
         text = "\n".join(texts) or "(no output)"
         if len(text) > MAX_RESULT_CHARS:
             text = text[:MAX_RESULT_CHARS] + f"\n[... {len(text) - MAX_RESULT_CHARS} characters cut]"
-        return not bool(_get(result, "isError", "is_error")), text, images
+        outcome = (not bool(_get(result, "isError", "is_error")), text, images)
+        return (*outcome, result.model_dump(by_alias=True, exclude_none=True)) if rich else outcome
 
 
 def _get(obj: Any, *names: str) -> Any:
@@ -294,6 +374,8 @@ def _get(obj: Any, *names: str) -> Any:
 
 
 def _server(d: dict[str, Any]) -> Any:
+    from .agents import vault
+    d = {**d, "env": vault.resolve_map(d.get("env", {})), "headers": vault.resolve_map(d.get("headers", {}))}
     if d["transport"] == "stdio":
         from mcp import StdioServerParameters
 

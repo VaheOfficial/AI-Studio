@@ -22,6 +22,9 @@ VOICES_DIR = DATA_DIR / "voices"
 WORKSPACE_DIR = DATA_DIR / "workspace"
 UPLOADS_DIR = DATA_DIR / "uploads"
 CACHE_DIR = DATA_DIR / "cache"
+# Worktrees are separate from the selected source checkout, including when Studio itself is the project.
+_USER_CACHE = Path(os.environ.get('LOCALAPPDATA', Path.home() / '.cache'))
+WORKTREES_DIR = Path(os.environ.get('STUDIO_WORKTREE_DIR', _USER_CACHE / 'Grom' / 'worktrees')).resolve()
 DB_PATH = DATA_DIR / "studio.db"
 
 # Only these top-level folders of the data dir are served under /files.

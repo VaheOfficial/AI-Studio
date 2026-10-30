@@ -1,0 +1,7 @@
+# Text files are stored and checked out with LF on every OS.
+* text=auto eol=lf
+
+*.png binary
+*.ico binary
+*.ttf binary
+*.glb binary

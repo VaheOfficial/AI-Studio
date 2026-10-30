@@ -307,9 +307,53 @@ def _row_to_message(r: sqlite3.Row) -> AgentMessage:
     )
 
 
-def list_messages(session_id: str) -> list[AgentMessage]:
-    rows = query("SELECT * FROM messages WHERE session_id = ? ORDER BY seq", (session_id,))
+def list_messages(session_id: str, from_seq: int | None = None, before_seq: int | None = None) -> list[AgentMessage]:
+    """A session's messages in order; ``from_seq``/``before_seq`` bound a page (inclusive / exclusive)."""
+    rows = query("SELECT * FROM messages WHERE session_id = ? AND seq >= ? AND seq < ? ORDER BY seq",
+                 (session_id, from_seq if from_seq is not None else -1,
+                  before_seq if before_seq is not None else 2**62))
     return [_row_to_message(r) for r in rows]
+
+
+def message_seq(session_id: str, message_id: str) -> int | None:
+    r = query_one("SELECT seq FROM messages WHERE session_id = ? AND id = ?", (session_id, message_id))
+    return r["seq"] if r else None
+
+
+def page_start(session_id: str, limit: int, max_chars: int, before_seq: int | None = None) -> int | None:
+    """``seq`` of the first message of the latest page before ``before_seq`` (or the end): at most ``limit``
+    messages, ending with the one that reaches ``max_chars`` of text, tool calls and thinking. None when there is no
+    message before ``before_seq``."""
+    rows = query(
+        "SELECT seq, LENGTH(content) + COALESCE(LENGTH(tool_calls), 0) + COALESCE(LENGTH(thinking), 0) "
+        "+ COALESCE(LENGTH(thinking_parts), 0) AS size FROM messages WHERE session_id = ? AND seq < ? "
+        "ORDER BY seq DESC LIMIT ?",
+        (session_id, before_seq if before_seq is not None else 2**62, limit),
+    )
+    start, total = None, 0
+    for r in rows:
+        start, total = r["seq"], total + r["size"]
+        if total >= max_chars:
+            break
+    return start
+
+
+def has_messages_before(session_id: str, seq: int) -> bool:
+    return query_one("SELECT 1 FROM messages WHERE session_id = ? AND seq < ? LIMIT 1", (session_id, seq)) is not None
+
+
+def message_totals(session_id: str) -> dict[str, Any]:
+    """Output tokens, generation time and token usage summed over a session's messages."""
+    r = query_one(
+        "SELECT COALESCE(SUM(output_tokens), 0) AS output_tokens, COALESCE(SUM(generation_s), 0) AS generation_s, "
+        "COALESCE(SUM(json_extract(usage, '$.requests')), 0) AS requests, "
+        "COALESCE(SUM(json_extract(usage, '$.input_tokens')), 0) AS input_tokens, "
+        "COALESCE(SUM(json_extract(usage, '$.cached_tokens')), 0) AS cached_tokens, "
+        "COALESCE(SUM(json_extract(usage, '$.output_tokens')), 0) AS usage_output_tokens "
+        "FROM messages WHERE session_id = ?",
+        (session_id,),
+    )
+    return dict(r) if r else {}
 
 
 def find_message(session_id: str, message_id: str) -> tuple[int, AgentMessage] | None:

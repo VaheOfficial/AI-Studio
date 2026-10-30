@@ -28,6 +28,7 @@ class HubSearchResult(BaseModel):
     formats: list[WeightFormat]
     tags: list[str]
     description: str | None = None
+    component: Literal['text_encoder'] | None = None
 
 
 class HubFile(BaseModel):
@@ -76,6 +77,7 @@ class HubVariant(BaseModel):
     note: str | None = None
     recommended: bool | None = None
     installed_id: str | None = None
+    component: Literal['text_encoder'] | None = None
 
 
 class HubRepo(BaseModel):
@@ -98,6 +100,8 @@ class HubRepo(BaseModel):
     variants: list[HubVariant]
     text_encoder: HubTextEncoder | None = None
     related: list[HubSearchResult]
+    component: Literal['text_encoder'] | None = None
+    generator_repo: str | None = None
 
 
 class HubInstallRequest(BaseModel):

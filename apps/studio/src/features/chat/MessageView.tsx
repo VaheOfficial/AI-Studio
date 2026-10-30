@@ -4,7 +4,7 @@ import { AlarmClock, Brain, ChevronRight, GitBranch, Radar, RotateCcw } from 'lu
 import { cn, IconButton, Logo } from '@studio/ui'
 import { automationRunOf } from '../../api/automations'
 import type { TurnClock } from '../../api/live'
-import type { AgentMessage, ToolCall } from '../../api/types'
+import type { AgentMessage } from '../../api/types'
 import { formatCount, formatDuration, formatUsage, tokensPerSecond } from '../../lib/format'
 import { formatUsd } from '../../lib/money'
 import { Markdown } from './Markdown'
@@ -12,6 +12,7 @@ import { useChatPrefs } from './prefs'
 import { useChatLightbox } from './lightbox'
 import { ToolCallCard } from './ToolCallCard'
 import { toolMeta } from './toolMeta'
+import { interleave } from './blocks'
 import s from './MessageView.module.css'
 
 export interface MessageViewProps {
@@ -29,14 +30,11 @@ export interface MessageViewProps {
   /** Checkpoint actions — only for saved messages while no reply is streaming. */
   onRewind?: (message: AgentMessage) => void
   onFork?: (message: AgentMessage) => void
+  /** Leading blocks of the reply left out: the chat shows only its latest blocks until the user scrolls up. */
+  skip?: number
 }
 
-/** The agent's completion verdict `[[DONE: yes|no]]` (see agent/loop.py) — kept in the saved text, hidden here. */
-const DONE_MARK = /\s*\[\[\s*DONE\s*(?::\s*(?:yes|no))?\s*\]\]\s*/gi
-/** Tool calls a model printed as text (the server runs them — agent/textcalls.py); hidden while they stream. */
-const CALL_MARKUP = /<(?:[\w-]+:)?function_calls>[\s\S]*?(?:<\/(?:[\w-]+:)?function_calls>|$)|<tool_call>[\s\S]*?(?:<\/tool_call>|$)/g
-
-export const MessageView = memo(function MessageView({ message, streaming, appear, clock, draft, onApprove, onAnswer, onRewind, onFork }: MessageViewProps) {
+export const MessageView = memo(function MessageView({ message, streaming, appear, clock, draft, onApprove, onAnswer, onRewind, onFork, skip = 0 }: MessageViewProps) {
   const actions = (onRewind || onFork) && (
     <div className={s.actions}>
       {onRewind && message.role === 'user' && (
@@ -72,8 +70,9 @@ export const MessageView = memo(function MessageView({ message, streaming, appea
     )
   }
 
-  const parts = interleave(message)
-  const last = parts.at(-1)
+  const all = interleave(message)
+  const parts = skip > 0 ? all.slice(skip) : all
+  const last = all.at(-1)
   // What the model is doing at the end of the reply: writing a tool call, writing the last part, or (nothing on the
   // page moving: before its first word, and between a finished tool and its next step) reading and getting started
   const writing = streaming && !draft
@@ -185,53 +184,6 @@ function ReplyMeta({ message, clock }: { message: AgentMessage; clock?: TurnCloc
       {message.cost != null && <span title="Billed by OpenRouter for this reply">{formatUsd(message.cost)}</span>}
     </span>
   )
-}
-
-type Part =
-  | { kind: 'text'; key: string; text: string }
-  | { kind: 'thinking'; key: string; text: string }
-  | { kind: 'call'; call: ToolCall }
-
-const clean = (text: string) => text.replace(CALL_MARKUP, '').replace(DONE_MARK, '\n').trim()
-
-/**
- * Text, thinking and tool cards in the order they happened: calls and thinking parts know the text length when they
- * began (`at`) and their order among each other (`seq`).
- */
-function interleave(message: AgentMessage): Part[] {
-  const content = message.content
-  const calls = message.tool_calls ?? []
-  const thoughts = message.thinking_parts ?? []
-  if (calls.some((c) => c.at == null)) {
-    // Messages saved before calls carried a position: thinking, then cards, then the text
-    const text = clean(content)
-    return [
-      ...(message.thinking ? [{ kind: 'thinking', key: 'thinking', text: message.thinking } as Part] : []),
-      ...calls.map((call): Part => ({ kind: 'call', call })),
-      ...(text ? [{ kind: 'text', key: 'text', text } as Part] : []),
-    ]
-  }
-  const items: { at: number; seq: number; part: Part }[] = [
-    ...calls.map((call) => ({ at: call.at!, seq: call.seq ?? 0, part: { kind: 'call', call } as Part })),
-    ...thoughts.map((t) => ({ at: t.at, seq: t.seq, part: { kind: 'thinking', key: `thinking-${t.seq}`, text: t.text } as Part })),
-  ]
-  if (!thoughts.length && message.thinking) {
-    items.push({ at: 0, seq: -1, part: { kind: 'thinking', key: 'thinking', text: message.thinking } })
-  }
-  items.sort((a, b) => a.at - b.at || a.seq - b.seq)
-  const parts: Part[] = []
-  let from = 0
-  const pushText = (to: number) => {
-    const text = clean(content.slice(from, to))
-    if (text) parts.push({ kind: 'text', key: `text-${from}`, text })
-    from = to
-  }
-  for (const item of items) {
-    pushText(Math.min(Math.max(item.at, from), content.length))
-    parts.push(item.part)
-  }
-  pushText(content.length)
-  return parts
 }
 
 function Thinking({ text, live }: { text: string; live?: boolean }) {

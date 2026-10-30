@@ -13,7 +13,7 @@ from .hub import variants
 from .events import bus
 from .jobs import JobContext, JobError, RateMeter, jobs
 from .proc import kill_tree
-from .runtimes import RUNTIMES, RuntimeNotReady, runtimes
+from .runtimes import RUNTIMES, RuntimeNotReady, WorkerError, runtimes
 from .runtimes import envs
 from .schemas import EvModelRemoved, EvModelUpdate, InstalledModel, InstalledStatus, Job, TextEncoderMode
 
@@ -364,11 +364,30 @@ class ModelManager:
         if m.id in self._offloaded:
             self._make_room(m)
 
-    def load(self, model_id: str) -> InstalledModel:
+    def _release_idle_workers(self, exclude: str) -> int:
+        """Free host memory after a failed Windows commit allocation without interrupting jobs."""
+        released = 0
+        for info in runtimes.all_info():
+            if info.id == exclude or not info.running or RUNTIMES[info.id].worker is None:
+                continue
+            try:
+                health = runtimes.request(info.id, "GET", "/health", timeout=3, start=False)
+                if health.get("busy", True):
+                    continue
+                events.log("info", "models", f"Releasing idle {info.name} worker after host-memory allocation failure")
+                runtimes.stop(info.id)
+                released += 1
+            except Exception as exc:
+                events.log("warn", "models", f"Could not release idle {info.id}: {exc}")
+        return released
+
+    def load(self, model_id: str, *, parallel: int = 1, context_per_slot: int | None = None,
+             owner: str | None = None) -> InstalledModel:
         m = self.get(model_id)
         if m.runtime in ("remote", "openrouter", "tencent-cloud"):
             raise ModelError("Remote models are not loaded locally", 400)
-        if m.status == "loaded" and (m.runtime == "ollama" or runtimes.loaded_model(m.runtime) == m.id):
+        reconfigure = m.runtime == 'llamacpp' and (parallel != 1 or context_per_slot is not None)
+        if not reconfigure and m.status == "loaded" and (m.runtime == "ollama" or runtimes.loaded_model(m.runtime) == m.id):
             return m
         if llamacpp.is_draft_model(m):  # before anything is unloaded to make room for it
             raise ModelError(f"{m.name} is a speculative-decoding draft model: it only runs next to the model it "
@@ -381,7 +400,10 @@ class ModelManager:
                 ollama.load(ollama_tag(m))
             elif m.runtime == "llamacpp":
                 previous = runtimes.loaded_model("llamacpp")
-                llamacpp.server.load(m)
+                if reconfigure:
+                    llamacpp.server.load(m, parallel=parallel, context_per_slot=context_per_slot, owner=owner)
+                else:
+                    llamacpp.server.load(m)
                 if previous and previous != m.id:  # llama-server holds one model at a time
                     self.set_status(previous, "ready")
             elif m.runtime == "lmstudio":
@@ -393,9 +415,19 @@ class ModelManager:
                 extra = (image_models.load_options(m) if m.kind == "image" else
                          video.load_options(m) if m.kind == "video" else {})
                 offload = self.offload_mode(m)
-                runtimes.request(m.runtime, "POST", "/load", timeout=1800, json={
-                    "model_id": m.id, "path": m.path, "offload": offload, **extra,
-                })
+                payload = {"model_id": m.id, "path": m.path, "offload": offload, **extra}
+                try:
+                    runtimes.request(m.runtime, "POST", "/load", timeout=1800, json=payload)
+                except WorkerError as exc:
+                    if not any(marker in str(exc).lower() for marker in ("paging file is too small", "os error 1455")):
+                        raise
+                    released = self._release_idle_workers(m.runtime)
+                    runtimes.stop(m.runtime)  # discard partial allocations in the failed loader
+                    if not released:
+                        raise
+                    self.set_status(m.id, "loading")
+                    events.log("info", "models", f"Retrying {m.name} load after releasing {released} idle workers")
+                    runtimes.request(m.runtime, "POST", "/load", timeout=1800, json=payload)
                 if previous and previous != m.id:
                     self.set_status(previous, "ready")
                     self._offloaded.discard(previous)

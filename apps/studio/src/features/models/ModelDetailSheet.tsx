@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router'
-import { Boxes, ChevronRight, Clock, Download, ExternalLink, FileText, GitBranch, Heart, KeyRound, Lock, TriangleAlert } from 'lucide-react'
+import { Boxes, ChevronRight, Clock, Download, ExternalLink, FileText, GitBranch, Heart, KeyRound, Layers, Lock, TriangleAlert } from 'lucide-react'
 import { Badge, Button, EmptyState, SegmentedControl, Sheet, Skeleton } from '@studio/ui'
 import { useHubRepo, useLocalBackends, type RepoRef } from '../../api/hub'
 import { useSettings } from '../../api/hooks'
@@ -145,6 +145,14 @@ function RepoDetail({ repo, onOpenRepo }: { repo: HubRepo; onOpenRepo: (r: RepoR
       )}
 
       {repo.summary && <p className={s.summary}>{repo.summary}</p>}
+
+      {repo.component === 'text_encoder' && <div className={s.callout}>
+        <Layers size={15} />
+        <div><strong>Image pipeline text encoder.</strong> This repository supplies the language/vision encoder.
+          Image generation also needs a denoiser and VAE. The runtimes below run this encoder as a chat model.
+          {repo.generator_repo && <button type="button" className={s.linkChip} onClick={() => onOpenRepo({ source: 'hf', id: repo.generator_repo! })}>Open matching image denoiser</button>}
+        </div>
+      </div>}
 
       {repo.base_models.length > 0 && (
         <div className={s.baseModels}>

@@ -50,7 +50,7 @@ class OpenRouterProvider(Provider):
         self.api_key = api_key
 
     async def info(self) -> ModelInfo:
-        m = next((m for m in openrouter_catalog.pins() if m.id == self.model), None)
+        m = await openrouter_catalog.find(self.model)  # pinned or not: a swarm can run any catalog model
         return ModelInfo(vision=bool(m and "image" in m.input_modalities), context=m.context_length if m else None)
 
     @staticmethod
@@ -84,6 +84,8 @@ class OpenRouterProvider(Provider):
                      ) -> AsyncIterator[StreamEvent]:
         body: dict[str, Any] = {"model": self.model, "messages": _cache_breakpoints(self.model,
                                                                             self._messages(system, history))}
+        if self.output_limit is not None:
+            body['max_tokens'] = self.output_limit
         if tools:
             body["tools"] = [{"type": "function", "function": {"name": t.name, "description": t.description,
                                                                "parameters": t.parameters}} for t in tools]

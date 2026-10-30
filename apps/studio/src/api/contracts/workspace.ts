@@ -188,6 +188,9 @@ export type ToolDisplay =
   | { kind: 'clock'; clocks: { location: string; timezone: string }[] }
   /** An automation the agent created or changed. */
   | { kind: 'automation'; automation_id: string; title: string; schedule: string; next_run?: string }
+  | { kind: 'app'; connector_id: string; resource_uri: string; title: string; session_id: string; arguments: Record<string, unknown>; result: Record<string, unknown> }
+  | { kind: 'animation'; title: string; preview: string; storyboard: string; composition: string; report: string; duration: number; frames: number; scenes: number; deterministic: boolean; warnings: string[]; width?: number; height?: number; fps?: number; quality?: 'draft' | 'standard' | 'final' }
+  | { kind: 'audio_timing'; source: string; duration: number; peak_dbfs: number; tempo_estimate_bpm: number | null; hits: { time: number; strength: number }[]; pauses: { start: number; end: number }[]; energy_by_second: { start: number; end: number; rms: number }[] }
 
 /** A file a tool created or changed; `url` downloads it. */
 export interface FileArtifact {

@@ -17,7 +17,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
 from starlette.websockets import WebSocketState
 
-from .. import __version__, config, db, events, system, workspace
+from .. import __version__, agent_plus, config, db, events, swarm, system, workspace
 from ..agent import TurnBusy, agent
 from ..events import Subscriber, bus, serialize
 from ..jobs import jobs
@@ -96,6 +96,10 @@ def _dispatch(msg: AgentSendMessage | AgentApproveMessage | AgentStopMessage | A
     if session is None:
         raise RequestError(f"Session '{msg.session_id}' not found")
     if isinstance(msg, AgentSendMessage):
+        if swarm.owns_session(msg.session_id):
+            raise RequestError('Saved team conversations are read-only; import the team into an Agents mission')
+        if agent_plus.owns_session(msg.session_id) and agent_plus.store.get(msg.session_id).status in ("completed", "cancelled"):
+            raise RequestError("Amend the mission before starting another task in this agent conversation")
         if not msg.content.strip():
             raise RequestError("Message content must not be empty")
         try:
@@ -109,6 +113,16 @@ def _dispatch(msg: AgentSendMessage | AgentApproveMessage | AgentStopMessage | A
         if not agent.approve(msg.session_id, msg.call_id, msg.approved):
             raise RequestError(f"No tool call '{msg.call_id}' is awaiting approval in this session")
     else:
+        if agent_plus.owns_session(msg.session_id):
+            mission = agent_plus.store.get(msg.session_id)
+            mission.status, mission.reason = "paused", "Stopped by user."
+            agent_plus.store.save(mission)
+        from ..agents import controls
+        task = asyncio.create_task(controls.pause(msg.session_id), name='pause-agent-' + msg.session_id)
+        def finished(value):
+            if not value.cancelled() and value.exception():
+                events.log('warn', 'agents', 'Agent pause failed: ' + str(value.exception()))
+        task.add_done_callback(finished)
         agent.stop(msg.session_id)  # idempotent: stopping an already-finished turn is not an error
 
 

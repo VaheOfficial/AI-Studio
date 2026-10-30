@@ -3,8 +3,8 @@
 Assistant turns are stored with a ``steps`` transcript: ``[{"text", "calls": [{"id", "name", "args",
 "output", "ok", "images"?}]}]``; each step becomes an assistant message followed by its tool results, which keep the
 pictures a tool returned (providers deliver them the way their API allows). Earlier turns are replayed without
-thinking blocks (only the current turn replays provider-native content), so the rebuilt prefix is identical on
-every request. When a long chat was summarized (``context.compact_history``), the summary stands in for the
+ordinary thinking text. Bounded provider-native continuation state is replayed only for the exact model that
+produced it. When a long chat was summarized (``context.compact_history``), the summary stands in for the
 messages it covers.
 """
 
@@ -35,16 +35,18 @@ def load(session_id: str) -> list[Message]:
             history.append(Message("user", row.content + note, images=attached))
             continue
         for step in row.steps or [{"text": row.content, "calls": []}]:
-            history.extend(step_messages(step))
+            history.extend(step_messages(step, db.get_session(session_id).model))
     return history
 
 
-def step_messages(step: dict[str, Any]) -> list[Message]:
-    calls = step.get("calls") or []
+def step_messages(step: dict[str, Any], model: str | None = None) -> list[Message]:
+    calls = [c for c in (step.get("calls") or []) if not c.get("nested")]
     if not step.get("text") and not calls:
         return []
+    state = step.get('provider_state')
+    raw = state.get('payload') if isinstance(state, dict) and state.get('model') == model else None
     out = [Message("assistant", step.get("text") or "",
-                   calls=[Call(c["id"], c["name"], c.get("args") or {}) for c in calls])]
+                   calls=[Call(c["id"], c["name"], c.get("args") or {}) for c in calls], raw=raw)]
     for c in calls:
         # A call without output was interrupted (stop/crash); providers still need a result for it.
         out.append(Message("tool", c.get("output") or "Cancelled before completion", call_id=c["id"],

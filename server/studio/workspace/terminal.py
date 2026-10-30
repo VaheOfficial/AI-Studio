@@ -101,6 +101,15 @@ class Terminal:
         except Exception:
             pass
         code = self.proc.exitstatus
+        try:
+            # pywinpty marks `closed` when the process exits, before closing its socket pair.
+            if osenv.IS_WINDOWS:
+                self.proc.fileobj.close()
+                self.proc._server.close()
+            else:
+                self.proc.close()
+        except Exception as exc:
+            events.log("warn", "terminal", f"Terminal {self.info.id} cleanup failed: {exc}")
         self._post(self._on_exit, code if isinstance(code, int) else -1)
 
     def _post(self, fn: object, arg: object) -> bool:

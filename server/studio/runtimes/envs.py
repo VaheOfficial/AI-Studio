@@ -48,8 +48,8 @@ ENV_SPECS: dict[str, EnvSpec] = {
         # that model's text encoder. gguf + bitsandbytes load quantized variants (and hold text encoders in 8 or 4
         # bits); av: LTX-2's image-to-video re-compresses the start frame the way the model was trained
         packages=[DIFFUSERS, "transformers>=5.17", "accelerate>=1.6", "safetensors", "sentencepiece",
-                  "protobuf", "pillow", "einops", "tiktoken", "gguf>=0.10", "bitsandbytes>=0.45", "av>=14"],
-        verify=("import torch, diffusers, transformers, accelerate, gguf, bitsandbytes, av; "
+                  "protobuf", "pillow", "einops", "tiktoken", "gguf>=0.10", "bitsandbytes>=0.45", "av>=14", "ftfy"],
+        verify=("import torch, diffusers, transformers, accelerate, gguf, bitsandbytes, av, ftfy; "
                 "assert torch.cuda.is_available(), 'CUDA not available'"),
     ),
     # The agent's run_python: data analysis, charts and documents (Word, Excel, PowerPoint, PDF). No torch.
@@ -57,9 +57,9 @@ ENV_SPECS: dict[str, EnvSpec] = {
         name="python",
         torch=[],
         packages=["numpy", "pandas", "matplotlib", "scipy", "sympy", "openpyxl", "python-docx", "python-pptx",
-                  "reportlab", "pypdf", "pdfplumber", "pillow", "requests", "beautifulsoup4", "tabulate"],
+                  "reportlab", "pypdf", "pdfplumber", "pymupdf", "pillow", "requests", "beautifulsoup4", "tabulate"],
         verify=("import numpy, pandas, matplotlib, scipy, sympy, openpyxl, docx, pptx, reportlab, pypdf, pdfplumber, "
-                "PIL, requests, bs4, tabulate"),
+                "PIL, requests, bs4, tabulate, pymupdf"),
     ),
     "voice": EnvSpec(
         name="voice",

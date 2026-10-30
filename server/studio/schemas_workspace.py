@@ -3,7 +3,7 @@ browser, background tasks, plans and tool displays). Routes: ``docs/api/workspac
 
 from __future__ import annotations
 
-from typing import Annotated, Literal, Union
+from typing import Annotated, Any, Literal, Union
 
 from pydantic import BaseModel, Field
 
@@ -379,10 +379,48 @@ class AutomationDisplay(BaseModel):
     next_run: str | None = None
 
 
+class AnimationDisplay(BaseModel):
+    kind:Literal['animation']='animation'
+    title:str
+    preview:str
+    storyboard:str
+    composition:str
+    report:str
+    duration:float
+    frames:int
+    scenes:int
+    deterministic:bool
+    width:int|None=None
+    height:int|None=None
+    fps:int|None=None
+    quality:Literal['draft','standard','final']|None=None
+    warnings:list[str]
+
+
+class AudioTimingDisplay(BaseModel):
+    kind:Literal['audio_timing']='audio_timing'
+    source:str
+    duration:float
+    peak_dbfs:float
+    tempo_estimate_bpm:float|None=None
+    hits:list[dict[str,float]]
+    pauses:list[dict[str,float]]
+    energy_by_second:list[dict[str,float]]
+
+class AppDisplay(BaseModel):
+    kind: Literal['app'] = 'app'
+    connector_id: str
+    resource_uri: str
+    title: str
+    session_id: str
+    arguments: dict[str, Any]
+    result: dict[str, Any]
+
+
 ToolDisplay = Annotated[
     Union[TerminalDisplay, DiffDisplay, FileDisplay, FilesDisplay, BrowserDisplay, PlanDisplay, TaskDisplay,
           SourcesDisplay, ImageDisplay, QuestionDisplay, PythonDisplay, WeatherDisplay, CalcDisplay,
-          ConversionDisplay, ClockDisplay, AutomationDisplay],
+          ConversionDisplay, ClockDisplay, AutomationDisplay, AppDisplay, AnimationDisplay, AudioTimingDisplay],
     Field(discriminator="kind"),
 ]
 

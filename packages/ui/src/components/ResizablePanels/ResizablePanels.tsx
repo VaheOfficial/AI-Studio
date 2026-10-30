@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from 'react'
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 import { cn } from '../../lib/cn'
 import s from './ResizablePanels.module.css'
 
@@ -31,6 +32,7 @@ export function ResizablePanels({
   maxFraction = 0.75,
   className,
 }: ResizablePanelsProps) {
+  const reduced = useReducedMotion()
   const root = useRef<HTMLDivElement>(null)
   const [dragging, setDragging] = useState(false)
   const [width, setWidth] = useState<number>()
@@ -73,8 +75,8 @@ export function ResizablePanels({
   return (
     <div ref={root} className={cn(s.panels, dragging && s.dragging, className)}>
       <div className={s.main}>{main}</div>
-      {side !== null && (
-        <>
+      <AnimatePresence initial={false}>{side !== null && (
+        <motion.div className={s.sideWrapper} initial={reduced ? false : { width: 0, opacity: 0 }} animate={{ width: shown + 1, opacity: 1 }} exit={{ width: 0, opacity: 0 }} transition={dragging || reduced ? { duration: 0 } : { duration: .24, ease: [.16, 1, .3, 1] }}>
           <div
             role="separator"
             aria-orientation="vertical"
@@ -91,8 +93,8 @@ export function ResizablePanels({
           <div className={s.side} style={{ width: shown }}>
             {side}
           </div>
-        </>
-      )}
+        </motion.div>
+      )}</AnimatePresence>
     </div>
   )
 }

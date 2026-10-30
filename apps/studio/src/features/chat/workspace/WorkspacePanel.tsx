@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { FolderOpen, FolderTree, Globe, ListChecks, PanelRightClose, SquareTerminal } from 'lucide-react'
+import { Layers, FolderOpen, FolderTree, Globe, ListChecks, PanelRightClose, SquareTerminal } from 'lucide-react'
 import { Button, IconButton, Tabs, Tooltip, type TabItem } from '@studio/ui'
 import type { ToolDisplay } from '../../../api/contracts/workspace'
 import { useWorkspaceState } from '../../../api/workspace'
@@ -10,8 +10,10 @@ import { useWorkspacePanel, type WorkspaceTab } from './panel'
 import { TasksTab } from './TasksTab'
 import { TerminalTab } from './TerminalTab'
 import s from './WorkspacePanel.module.css'
+import AgentContextPanel from '../../agents/AgentContextPanel'
 
 const TABS: TabItem<WorkspaceTab>[] = [
+  { value: 'context', label: <span className={s.tabLabel}>Context</span>, icon: <Layers size={14} /> },
   { value: 'terminal', label: <span className={s.tabLabel}>Terminal</span>, icon: <SquareTerminal size={14} /> },
   { value: 'files', label: <span className={s.tabLabel}>Files</span>, icon: <FolderTree size={14} /> },
   { value: 'browser', label: <span className={s.tabLabel}>Browser</span>, icon: <Globe size={14} /> },
@@ -50,7 +52,7 @@ export function WorkspacePanel({ sessionId, draftRoot, onDraftRoot, diffs }: Wor
       </header>
 
       <div className={s.body}>
-        {!sessionId ? (
+        {tab === 'context' ? <AgentContextPanel sessionId={sessionId} /> : !sessionId ? (
           <div className={s.intro}>
             <FolderOpen size={22} />
             <p>

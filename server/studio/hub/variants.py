@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from typing import Literal
 
 from ..schemas import ModelKind, RuntimeId, TextEncoderMode, WeightFormat
 
@@ -62,6 +63,7 @@ class Draft:
     # Alternative denoiser weights: the base diffusers pipeline's other components must come with it.
     needs_base: bool = False
     notes: list[str] = field(default_factory=list)
+    component: Literal['text_encoder'] | None = None
 
 
 def slug(text: str) -> str:
@@ -286,18 +288,33 @@ def _onnx(files: dict[str, int], kind: ModelKind | None) -> list[Draft]:
                   notes=["The studio has no ONNX runtime; use the PyTorch or GGUF build."])]
 
 
-def group(files: dict[str, int], kind: ModelKind | None, tags: list[str]) -> list[Draft]:
+def component_of(files: dict[str, int], kind: ModelKind | None, tags: list[str], architecture: str | None = None) -> Literal['text_encoder'] | None:
+    """Image-task metadata can describe a standalone language encoder rather than an image denoiser."""
+    if kind != 'image' or 'model_index.json' in files:
+        return None
+    ggufs = [p.lower() for p in files if p.lower().endswith('.gguf')]
+    if not ggufs or 'text-encoder' not in tags:
+        return None
+    decoder = architecture in {'qwen2', 'qwen2vl', 'qwen3', 'qwen3vl', 'llama', 'gemma', 'gemma2', 'gemma3'}
+    vision_encoder = any('mmproj' in p.rsplit('/', 1)[-1] for p in ggufs)
+    return 'text_encoder' if decoder or vision_encoder else None
+
+
+def group(files: dict[str, int], kind: ModelKind | None, tags: list[str], component: Literal['text_encoder'] | None = None) -> list[Draft]:
     """All variants found in a repo's files (without companions, fit or install state)."""
     drafts: list[Draft] = []
     if "model_index.json" in files:
         drafts += _diffusers(files, kind)
-    drafts += _gguf(files, kind)
+    drafts += _gguf(files, 'text' if component == 'text_encoder' else kind)
     drafts += _single_files(files, kind)
     drafts += _transformers(files, kind, tags)
     drafts += _ct2(files, kind, tags)
     if not drafts:
         drafts += _onnx(files, kind)
     for d in drafts:
+        if component == 'text_encoder' and d.format == 'gguf':
+            d.component = component
+            d.notes.insert(0, 'Text encoder component, not an image denoiser. These runtimes run it as a language/vision model; image generation also needs the matching denoiser and VAE.')
         d.note = " ".join(d.notes) or None
     return drafts
 

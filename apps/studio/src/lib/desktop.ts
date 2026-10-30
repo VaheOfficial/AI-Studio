@@ -25,6 +25,12 @@ export interface UpdateStatus {
 }
 
 interface DesktopBridge {
+  window?: {
+    platform: string
+    command(command: 'minimize' | 'maximize' | 'close'): void
+    getState(): Promise<{ maximized: boolean; fullscreen: boolean } | null>
+    onState(handler: (state: { maximized: boolean; fullscreen: boolean }) => void): () => void
+  }
   updates: {
     check(): Promise<UpdateStatus | null>
     install(): Promise<UpdateStatus | null>

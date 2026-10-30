@@ -227,6 +227,18 @@ async def search(output: CloudOutputFilter = "all", q: str = "", tools: bool = F
     return CloudCatalogPage(models=out[offset:offset + limit], total=len(out), fetched_at=fetched_at)
 
 
+async def find(model_id: str) -> CloudModel | None:
+    """One model by its OpenRouter id, pinned or not (from the cached catalog; fetched when not loaded yet)."""
+    pinned_model = pinned(model_id)
+    if pinned_model is not None:
+        return pinned_model
+    try:
+        models, _fetched = await _all()
+    except OpenRouterError:
+        return None
+    return next((m for m in models if m.id == model_id), None)
+
+
 # --------------------------------- pins ---------------------------------
 
 

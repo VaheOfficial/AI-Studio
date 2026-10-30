@@ -17,14 +17,17 @@ from starlette.responses import Response
 from starlette.types import Scope
 
 from . import (__version__, automations, config, connectors, db, events, imaging, library, memories, ollama, openrouter_catalog, openrouter_usage, storage,
-               workspace)
+               swarm, workspace)
 from .agent import agent
+from . import agent_plus, agents
 from .agent import pykernel
 from .events import bus
 from .game import store as game_store
 from .game.master import games
 from .models import models
 from .routes import agent as agent_routes
+from .routes import agent_plus as agent_plus_routes
+from .routes import agents as agents_routes
 from .routes import audio_tools as audio_tools_routes
 from .routes import audiobook as audiobook_routes
 from .routes import automations as automation_routes
@@ -35,12 +38,16 @@ from .routes import hub as hub_routes
 from .routes import image as image_routes
 from .routes import models as model_routes
 from .routes import openrouter as openrouter_routes
+from .routes import swarm as swarm_routes
 from .routes import system as system_routes
 from .routes import voice as voice_routes
 from .routes import workspace as workspace_routes
 from .routes import game as game_routes
 from .routes import video as video_routes
+from .routes import animation as animation_routes
 from .routes import ws as ws_routes
+from .routes import arena as arena_routes
+from . import arena
 from .runtimes import runtimes
 from .voice import store as voice_store
 
@@ -72,38 +79,71 @@ def _bring_up_ollama() -> None:
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     config.ensure_dirs()
-    db.init()
-    storage.apply()  # a moved models folder (Settings → Storage)
-    library.backfill()  # every model's folder says what it holds, so another copy of the studio can pick it up
-    openrouter_catalog.init()
-    openrouter_usage.init()
-    imaging.init()
-    workspace.init()
-    voice_store.init()
-    game_store.init()
-    memories.init()
-    automations.init()
-    connectors.init()
-    bus.bind_loop(asyncio.get_running_loop())
-    workspace.start(agent)
-    automations.runner.start(agent)
-    connectors.manager.start_all()
-    psutil.cpu_percent(interval=None)  # prime: the first reading is always 0
-    for m in db.list_installed():
-        # Workers don't survive a restart, so nothing non-Ollama can still be loaded.
-        if m.runtime != "ollama" and m.status in ("loaded", "loading"):
-            db.set_installed_status(m.id, "ready")
-    threading.Thread(target=_bring_up_ollama, name="ollama-start", daemon=True).start()
-    events.log("info", "server", f"Grom AI Studio server {__version__} started; data dir {config.DATA_DIR}")
-    yield
-    ws_routes.ticker.stop()
-    await automations.runner.shutdown()
-    await connectors.manager.shutdown()
-    await asyncio.to_thread(pykernel.stop_all)
-    await workspace.shutdown()  # first: background tasks must see a shutdown, not a user stop
-    await agent.shutdown()  # running turns save their final state (pending approvals -> denied)
-    await games.shutdown()
-    await asyncio.to_thread(runtimes.stop_all)
+    from .agents import runtime as agent_runtime
+    agent_runtime.acquire()
+    try:
+        db.init()
+        storage.apply()  # a moved models folder (Settings → Storage)
+        library.backfill()  # every model's folder says what it holds, so another copy of the studio can pick it up
+        openrouter_catalog.init()
+        openrouter_usage.init()
+        imaging.init()
+        workspace.init()
+        voice_store.init()
+        game_store.init()
+        arena.init()
+        memories.init()
+        automations.init()
+        swarm.store.init()
+        for legacy in swarm.store.list_swarms():
+            if legacy.status == 'running':
+                swarm.store.update_swarm(legacy.id, status='paused', status_reason='Continue through an Agents mission.')
+        agent_plus.init()
+        agents.init()
+        connectors.init()
+        bus.bind_loop(asyncio.get_running_loop())
+        workspace.start(agent)
+        automations.runner.start(agent)
+        # Legacy swarm records remain readable; new delegated work uses bounded subagents.
+        agent_plus.controller.start(agent)
+        agents.wakes.runner.start(agent)
+        agents.monitors.runner.start()
+        if db.get_setting_values().get('agents.gateway_enabled'):
+            try:
+                await agent_runtime.start_gateway()
+            except ValueError as exc:
+                events.log('warn', 'agents', str(exc))
+        connectors.manager.start_all()
+        psutil.cpu_percent(interval=None)  # prime: the first reading is always 0
+        for m in db.list_installed():
+            # Workers don't survive a restart, so nothing non-Ollama can still be loaded.
+            if m.runtime != "ollama" and m.status in ("loaded", "loading"):
+                db.set_installed_status(m.id, "ready")
+        threading.Thread(target=_bring_up_ollama, name="ollama-start", daemon=True).start()
+        events.log("info", "server", f"Grom AI Studio server {__version__} started; data dir {config.DATA_DIR}")
+        yield
+    finally:
+        try:
+            await arena.runner.shutdown()
+            ws_routes.ticker.stop()
+            await automations.runner.shutdown()
+            await agents.wakes.runner.shutdown()
+            await agents.monitors.runner.shutdown()
+            await agents.notifications.shutdown()
+            await agent_runtime.stop_gateway()
+            from .agents import browser_tools
+            await browser_tools.shutdown()
+            await agent_plus.controller.shutdown()
+            await swarm.shutdown()  # before the agent stops its turns: a shutdown is not a failed attempt
+            await connectors.manager.shutdown()
+            await asyncio.to_thread(pykernel.stop_all)
+            await workspace.shutdown()  # first: background tasks must see a shutdown, not a user stop
+            await agent.shutdown()  # running turns save their final state (pending approvals -> denied)
+            await games.shutdown()
+            await asyncio.to_thread(runtimes.stop_all)
+        finally:
+            agent_runtime.release()
+
 
 
 def create_app() -> FastAPI:
@@ -119,8 +159,8 @@ def create_app() -> FastAPI:
 
     for module in (system_routes, model_routes, hub_routes, generate_routes, image_routes, agent_routes,
                    openrouter_routes, voice_routes, workspace_routes, dub_routes, audiobook_routes,
-                   audio_tools_routes, game_routes, video_routes, automation_routes,
-                   connector_routes, ws_routes):
+                    audio_tools_routes, game_routes, video_routes, animation_routes, automation_routes, swarm_routes,
+                   connector_routes, agent_plus_routes, agents_routes, arena_routes, ws_routes):
         app.include_router(module.router)
     config.ensure_dirs()
     app.mount("/files", PublicDataFiles(directory=config.DATA_DIR, check_dir=False), name="files")

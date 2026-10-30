@@ -1,0 +1,17 @@
+@font-face{font-family:StageSans;src:url(assets/sans.woff2);font-weight:100 900}
+@font-face{font-family:StageMono;src:url(assets/mono.woff2);font-weight:100 900}
+:root{color-scheme:dark;--accent:#f33b68;--surface:#171316;--border:#382930;--text:#eee8ea;--muted:#aa9da3}
+*{box-sizing:border-box}
+body{margin:0;background:#0b0b0d;color:var(--text);font:14px StageSans,Arial,sans-serif}
+main{margin:auto;padding-top:12px}
+canvas{display:block;margin:auto;width:auto;height:auto;max-width:100%;max-height:calc(100dvh - 136px)}
+footer{display:flex;align-items:center;gap:16px;padding:16px}
+button{min-width:84px;min-height:44px;background:var(--surface);color:var(--text);border:1px solid var(--border);padding:10px 20px;border-radius:10px;cursor:pointer;font:600 13px StageSans,Arial,sans-serif;transition:background .18s ease,border-color .18s ease,transform .18s ease}
+button:hover{background:#26171e;border-color:#77404e}
+button:active{transform:translateY(1px)}
+input{flex:1;min-width:40px;accent-color:var(--accent);cursor:pointer}
+#clock{font:12px StageMono,monospace;color:var(--muted);min-width:48px;text-align:right}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:4px}
+p{margin:0;padding:0 16px 18px;color:var(--muted);line-height:1.5}
+@media(max-width:500px){footer{gap:12px;padding:12px}canvas{max-height:calc(100dvh - 128px)}p{padding:0 12px 16px}}
+@media(prefers-reduced-motion:reduce){button{transition:none}}

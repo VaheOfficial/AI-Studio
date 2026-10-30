@@ -20,6 +20,20 @@ PLATFORM = "windows" if IS_WINDOWS else "macos" if IS_MAC else "linux"
 # How the agent's prompt and the UI name this computer
 MACHINE = {"windows": "Windows PC", "macos": "Mac", "linux": "Linux PC"}[PLATFORM]
 
+
+def desktop_backend() -> tuple[bool, str]:
+    """Prerequisites only; actual OS permission and input need a live acceptance check."""
+    import importlib.util
+    if IS_WINDOWS:
+        return True, 'Windows native input'
+    if IS_LINUX and (os.environ.get('XDG_SESSION_TYPE') == 'wayland' or not os.environ.get('DISPLAY')):
+        return False, 'Native desktop input requires an X11 session; Wayland needs a portal backend'
+    if importlib.util.find_spec('pyautogui') is None:
+        return False, 'Install PyAutoGUI for the local desktop backend'
+    if IS_MAC:
+        return True, 'macOS primary display; grant Accessibility and Screen Recording permissions'
+    return True, 'X11 primary display'
+
 # subprocess creationflags: no console window (Windows); 0 elsewhere, which Popen accepts everywhere
 NO_WINDOW: int = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 _NEW_GROUP: int = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)

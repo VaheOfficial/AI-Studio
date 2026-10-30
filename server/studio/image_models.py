@@ -85,7 +85,7 @@ FAMILIES: dict[str, Family] = {
     "QwenImagePipeline": Family("Qwen-Image", "true-cfg", True, 30, 4.0, _ALL),
     # One pipeline for text-to-image and editing; meant to be sampled without guidance (cfg 1 = off)
     "QwenImage21Pipeline": Family("Qwen-Image 2.1", "true-cfg", True, 40, 1.0, ("txt2img", "edit"), size_step=32,
-                                  max_images=3),
+                                  max_images=10),
     "QwenImageEditPipeline": Family("Qwen-Image-Edit", "true-cfg", True, 40, 4.0, ("edit", "inpaint"),
                                     max_images=1),
     "QwenImageEditPlusPipeline": Family("Qwen-Image-Edit", "true-cfg", True, 40, 4.0, ("edit",), max_images=3),

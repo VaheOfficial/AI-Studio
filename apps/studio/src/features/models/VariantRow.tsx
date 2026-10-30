@@ -57,6 +57,7 @@ export function VariantRow({ repo, variant: v, backends, defaultBackend, runtime
       <div className={s.variantMain}>
         <div className={s.variantTitle}>
           <span className={s.variantLabel}>{v.label}</span>
+          {v.component === 'text_encoder' && <Badge size="sm">Text encoder</Badge>}
           {pick && (
             <Badge size="sm" tone="accent" icon={<Sparkles />}>
               Recommended

@@ -1,0 +1,19 @@
+{
+  "source": "User-provided film source, inspected 2026-10-13",
+  "source_sha256": {
+    "config.js": "70d3f2378c53ed3a53a80ff2ee5003fc47a9e8c78165e1fbc12b64222c4862a3",
+    "util.js": "2ee2b60db62a3fbd54f0a37bfb5ff207cd27468c221ac9e6110333afa6a8965b",
+    "tiler.js": "dd566173bd81b1d26550f1c601ef1008a0991f969529a7b6b0cf561c439c3b7d",
+    "scene.js": "a78764335a7be909f31d5e7421438ed7f9ecec99a0db671a3dd8908a689d4289",
+    "fish.js": "60166f9058a4ae881e4ecfc726b2168af568679f21209a4b034b1c5ec3fd6455",
+    "choreo.js": "86b0c7bc0f07c62c3cd41f10800e69739fd2d796a422a429874dcd658e912100",
+    "renderer.js": "0e4039996a2d57cb3c67cf5b538a0ba048fc698f6429d72d94a6c8082a8720f0",
+    "main.js": "4fda6caaac5291ca09c25b191c4369658d33246744f17c8f0aec07248af89e20"
+  },
+  "adaptations": [
+    "Isolated per-instance factory; no original player or export server",
+    "Renderer disposal",
+    "Bounded data overrides for palette, camera, path, fish profile and acting channels",
+    "No global camera override"
+  ]
+}

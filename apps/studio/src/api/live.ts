@@ -4,6 +4,7 @@ import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { toast } from '@studio/ui'
 import { create } from 'zustand'
 import { dispatchGame } from './game'
+import { updateArena, arenaKeys } from './arena'
 import { dispatchImagePreview } from './image'
 import { qk } from './keys'
 import { socket, type SocketStatus } from './socket'
@@ -11,6 +12,7 @@ import { dispatchWorkspace } from './workspace'
 import { automationRunOf, dispatchAutomation } from './automations'
 import { away, notifySystem, onNotificationOpen } from '../lib/notify'
 import { dispatchConnector } from './connectors'
+import { dispatchSwarm, isSwarmMessage } from './swarm'
 import type {
   AgentEvent,
   AgentMessage,
@@ -280,14 +282,16 @@ const LONG_TURN_MS = 20_000
 /**
  * A chat wants the user, or finished something long, while they are not looking at it: a system notification when
  * the app is not in front, a toast with a way there when they are in another part of the app. An automation's run
- * is left to `automation.run`, which says the same with the automation's name.
+ * is left to `automation.run`, which says the same with the automation's name, and a swarm's sessions to the swarm's
+ * own notices (`api/swarm.ts`).
  */
 function tell(qc: QueryClient, sessionId: string, note: { title: (chat: string) => string; body?: string; tone: 'info' | 'warning' | 'error' }) {
   const session = qc.getQueryData<AgentSession[]>(qk.sessions)?.find((x) => x.id === sessionId)
   const turn = useLive.getState().turns[sessionId]
-  if (turn && automationRunOf(turn.user_message.content)) return
+  if (turn && (automationRunOf(turn.user_message.content) || isSwarmMessage(turn.user_message.content))) return
   const title = note.title(session?.title && session.title !== 'New chat' ? `“${session.title}”` : 'A chat')
-  const path = `/chat/${sessionId}`
+  const isMission = qc.getQueryData<{ missions: { session_id: string }[] }>(['agents', 'overview'])?.missions.some(m => m.session_id === sessionId)
+  const path = `/agents/${isMission ? 'missions' : 'chat'}/${sessionId}`
   if (away()) notifySystem({ title, body: note.body, tag: `chat-${sessionId}`, path })
   else if (window.location.pathname !== path) {
     toast({ title, description: note.body, tone: note.tone, duration: 9000, action: { label: 'Open chat', onClick: () => openSession(path) } })
@@ -392,7 +396,10 @@ function dispatch(qc: QueryClient, ev: ServerEvent) {
   const live = useLive.getState()
   switch (ev.type) {
     case 'hello':
+      void qc.invalidateQueries({ queryKey: arenaKeys.all })
       return handleHello(qc, ev)
+    case 'arena.update':
+      return updateArena(qc, ev.match)
     case 'system':
       return useLive.setState({ system: ev.system })
     case 'job.update':
@@ -417,6 +424,13 @@ function dispatch(qc: QueryClient, ev: ServerEvent) {
       }))
     case 'agent':
       return handleAgent(qc, ev.session_id, ev.event)
+    case 'agents.update':
+      void qc.invalidateQueries({ queryKey: ['agents'] })
+      return
+    case 'agentplus.update':
+      void qc.invalidateQueries({ queryKey: ['agents'] })
+      void qc.invalidateQueries({ queryKey: ['agentplus'] })
+      return
     case 'image.preview':
       return dispatchImagePreview(ev)
     case 'game.delta':
@@ -430,10 +444,17 @@ function dispatch(qc: QueryClient, ev: ServerEvent) {
     case 'automation.update':
     case 'automation.removed':
     case 'automation.run':
-      return dispatchAutomation(qc, ev, (sessionId) => openSession(`/chat/${sessionId}`))
+      return dispatchAutomation(qc, ev, (sessionId) => openSession(`/agents/chat/${sessionId}`))
     case 'connector.update':
     case 'connector.removed':
       return dispatchConnector(qc, ev)
+    case 'swarm.update':
+    case 'swarm.removed':
+    case 'swarm.agent':
+    case 'swarm.item':
+    case 'swarm.inbox':
+    case 'swarm.event':
+      return dispatchSwarm(qc, ev, openSession)
     case 'error':
       if (ev.ref?.startsWith('send:')) setTurn(ev.ref.slice('send:'.length), () => undefined)
       toast.error('Request failed', ev.message)

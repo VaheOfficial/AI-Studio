@@ -99,7 +99,9 @@ class OpenAIProvider(Provider):
         self.api_key = api_key
 
     async def info(self) -> ModelInfo:
-        return ModelInfo(vision=looks_like_vision(self.model))
+        from ...agents import model_checks
+        verified = model_checks.get('openai:' + self.model)
+        return ModelInfo(vision=looks_like_vision(self.model), tools=bool(verified and verified['tools']))
 
     @staticmethod
     def _messages(system: str, history: list[Message]) -> list[dict[str, Any]]:
@@ -148,11 +150,17 @@ class OpenAIProvider(Provider):
         out: dict[str, Any] = {"model": self.model, "messages": mark_cache_breakpoints(messages) if marked
                                else messages, "stream": True,
                                "stream_options": {"include_usage": True}}  # token counts in the last chunk
+        if self.output_limit is not None:
+            out['max_tokens'] = self.output_limit
         if tools:
             out["tools"] = [{"type": "function", "function": {"name": t.name, "description": t.description,
                                                               "parameters": t.parameters}} for t in tools]
             if self.parallel_tools:
                 out["parallel_tool_calls"] = True
+        if self.response_schema is not None:
+            if tools:
+                raise ProviderError('Schema-constrained final output cannot run tools in the same request')
+            out['response_format'] = {'type':'json_schema','json_schema':{'name':'studio_result','strict':True,'schema':self.response_schema}}
         return out
 
     async def stream(self, system: str, history: list[Message], tools: list[ToolSpec] | None

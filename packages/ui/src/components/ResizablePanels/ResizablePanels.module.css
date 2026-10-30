@@ -48,3 +48,5 @@
 .dragging .handle {
   background: var(--accent);
 }
+
+.sideWrapper { display: flex; flex-shrink: 0; overflow: hidden; min-height: 0; }

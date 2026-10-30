@@ -9,6 +9,14 @@ import type { ImageServerEvent } from './contracts/image'
 import type { OpenRouterServerEvent } from './contracts/openrouter'
 import type { AutomationServerEvent } from './contracts/automations'
 import type { ConnectorServerEvent } from './contracts/connectors'
+import type { SwarmServerEvent } from './contracts/swarm'
+import type { AgentPlusServerEvent } from './contracts/agentPlus'
+import type { AgentsServerEvent } from './contracts/agents'
+import type { ArenaServerEvent } from './contracts/arena'
+export type * from './contracts/arena'
+export type * from './contracts/agents'
+export type * from './contracts/animation'
+export type * from './contracts/agentPlus'
 import type { ToolDisplay, WorkspaceClientMessage, WorkspaceServerEvent } from './contracts/workspace'
 
 export type ModelKind = 'text' | 'image' | 'voice' | 'stt' | 'music' | 'video'
@@ -367,6 +375,25 @@ export interface AgentSession {
   context?: ContextUsage
   /** This chat's context window in tokens (`/context`); absent = automatic (the model's / Settings). */
   context_size?: number
+  /** A paged read (`?limit=` / `?from=`): earlier messages exist (`GET /agent/sessions/{id}/messages?before=`). */
+  has_older?: boolean
+  /** A paged read: what all of the chat's replies used, loaded or not. */
+  totals?: SessionTotals
+}
+
+/** Summed over every saved reply of a chat, so a chat shown a page at a time still reports its whole usage. */
+export interface SessionTotals {
+  /** Billed by OpenRouter (USD). */
+  cost: number
+  output_tokens: number
+  generation_s: number
+  usage: TokenUsage
+}
+
+/** `GET /agent/sessions/{id}/messages?before=<message id>`: the messages just before one, oldest first. */
+export interface MessagePage {
+  messages: AgentMessage[]
+  has_older: boolean
 }
 
 /** `PATCH /agent/sessions/{id}`; `context_size: 0` returns the chat to the automatic window. */
@@ -478,6 +505,10 @@ export type ServerEvent =
   | GameServerEvent
   | AutomationServerEvent
   | ConnectorServerEvent
+  | SwarmServerEvent
+  | AgentPlusServerEvent
+  | AgentsServerEvent
+  | ArenaServerEvent
 
 /** Client → server. `ref` is echoed back on a resulting `error`. */
 export type ClientMessage =

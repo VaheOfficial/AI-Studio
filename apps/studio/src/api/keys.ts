@@ -13,6 +13,8 @@ export const qk = {
   memories: ['memories'] as const,
   sessions: ['sessions'] as const,
   session: (id: string) => ['session', id] as const,
+  /** Earlier pages of a chat: outside `session(id)`, so finishing a reply does not refetch them. */
+  olderMessages: (id: string, before: string) => ['session', 'older', id, before] as const,
   openrouterAccount: ['openrouter', 'account'] as const,
   cloudModels: (query: string) => ['openrouter', 'models', query] as const,
   hubSearch: (query: string) => ['hub', 'search', query] as const,

@@ -154,6 +154,24 @@
     border-color var(--dur-fast);
 }
 
+.earlier {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: none;
+  color: var(--text-3);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition:
+    color var(--dur-fast),
+    border-color var(--dur-fast);
+}
+
+.earlier:hover,
 .toEnd:hover {
   border-color: rgb(var(--accent-rgb) / 0.5);
   color: var(--text-1);

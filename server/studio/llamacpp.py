@@ -7,6 +7,7 @@ from __future__ import annotations
 import hashlib
 import json
 import platform
+import re
 import shutil
 import socket
 import subprocess
@@ -20,7 +21,7 @@ import httpx
 
 from . import config, events, osenv, settings
 from .osenv import detached
-from .gguf_meta import DRAFT_ARCHITECTURES, architecture, mtp_layers
+from .gguf_meta import DRAFT_ARCHITECTURES, architecture, mtp_layers, read_values
 from .jobs import JobContext, JobError, RateMeter, jobs
 from .localhttp import client
 from .proc import bind_to_server_lifetime, kill_tree
@@ -272,6 +273,32 @@ def is_draft_model(m: InstalledModel) -> bool:
     return architecture(main) in DRAFT_ARCHITECTURES
 
 
+def supports_tool_chat(model: Path) -> bool:
+    """Reject known pretrained Gemma variants rather than claiming agent support."""
+    if architecture(model) != "gemma4":
+        return True
+    meta = read_values(model, {"general.source.url", "general.finetune", "tokenizer.chat_template"})
+    source = str(meta.get("general.source.url") or "").lower().rstrip("/")
+    # The exact Google base model has no instruction tuning or tool-call contract.
+    if source.startswith("https://huggingface.co/google/gemma-4-") and not source.endswith("-it"):
+        return False
+    return bool(meta.get("tokenizer.chat_template") or source.endswith("-it") or meta.get("general.finetune"))
+
+
+def chat_template_override(model: Path) -> Path | None:
+    """Gemma 4 GGUFs without their native template must not fall back to ChatML.
+
+    Source: google/gemma-4-26B-A4B-it chat_template.jinja.
+    The family format is shared by the 26B-A4B and 31B instruction models.
+    """
+    if architecture(model) != "gemma4" or not supports_tool_chat(model):
+        return None
+    embedded = read_values(model, {"tokenizer.chat_template"}).get("tokenizer.chat_template")
+    if not embedded or "<|turn>" not in embedded:
+        return Path(__file__).parent / "templates" / "gemma4.jinja"
+    return None
+
+
 def _free_port() -> int:
     with socket.socket() as s:
         s.bind((config.HOST, 0))
@@ -286,6 +313,11 @@ class LlamaServer:
         self._proc: subprocess.Popen[str] | None = None
         self._port: int | None = None
         self._model_id: str | None = None
+        self._parallel = 1
+        self._context_per_slot: int | None = None
+        self._load_owner: str | None = None
+        self._loading = False
+        self._gpu_offload_complete: bool | None = None
 
     def _alive(self) -> bool:
         return self._proc is not None and self._proc.poll() is None
@@ -301,7 +333,44 @@ class LlamaServer:
             return f"http://{config.HOST}:{self._port}/v1"
         return None
 
-    def load(self, m: InstalledModel) -> None:
+    def capacity(self) -> dict[str, int | bool] | None:
+        """Verify slots/context and whether any request is in flight before a reconfiguration."""
+        if not self._alive() or self._loading:
+            return None
+        props = client.get(f"http://{config.HOST}:{self._port}/props", timeout=5)
+        props.raise_for_status()
+        slots = client.get(f"http://{config.HOST}:{self._port}/slots", timeout=5)
+        slots.raise_for_status()
+        data = props.json()
+        result={'slots': int(data['total_slots']),
+                'context_per_slot': int(data['default_generation_settings']['n_ctx']),
+                'busy': any(v.get('is_processing', False) for v in slots.json())}
+        if self._gpu_offload_complete is not None:
+            result['gpu_offload_complete']=self._gpu_offload_complete
+        return result
+
+    def cancel_load(self, owner: str) -> None:
+        """Cancel only the loader owned by this arena, without stopping an unrelated server."""
+        with self._lock:
+            if self._loading and self._load_owner == owner:
+                self._stop_locked()
+
+    def release_arena(self, owners: set[str]) -> bool:
+        """Release an idle temporary arena load; ordinary loads have no arena owner."""
+        with self._lock:
+            if self._load_owner not in owners or self._loading or not self._alive():
+                return False
+            current=self.capacity()
+            if not current or current['busy']:
+                return False
+            model_id=self._stop_locked()
+        _mark_unloaded(model_id)
+        return True
+
+    def load(self, m: InstalledModel, *, parallel: int = 1, context_per_slot: int | None = None,
+             owner: str | None = None) -> None:
+        if parallel not in (1, 2):
+            raise ValueError('Supported llama.cpp generation slots are one or two')
         if not installed():
             raise RuntimeNotReady("llama.cpp is not installed yet: set it up under Models → Runtimes "
                                   "(installing a GGUF model with llama.cpp does this too).")
@@ -312,35 +381,45 @@ class LlamaServer:
             raise WorkerError(f"{m.name} is a speculative-decoding draft model: it only runs next to the model it "
                               "was made for, not on its own")
         s = settings.load()
+        context = context_per_slot or s.llamacpp_ctx_size
+        if not 2048 <= context <= 262144:
+            raise ValueError('Context per slot must be between 2048 and 262144 tokens')
         with self._lock:
             self._stop_locked()
             port = _free_port()
             cmd = [str(server_exe()), "-m", str(model), "--host", config.HOST, "--port", str(port),
-                   "--jinja", "-ngl", "auto", "--fit", "on", "-c", str(s.llamacpp_ctx_size),
-                   "--alias", m.id, "--no-webui"]
+                   "--jinja", "-ngl", "auto", "--fit", "on", "-c", str(context * parallel),
+                   "--alias", m.id, "--no-webui", "-np", str(parallel), "--cont-batching"]
+            if template := chat_template_override(model):
+                cmd += ["--chat-template-file", str(template)]
+                events.log("info", "llamacpp", "Using bundled native Gemma 4 template; GGUF template is missing or incompatible")
             if s.llamacpp_kv_cache != "f16":
                 cmd += ["-ctk", s.llamacpp_kv_cache, "-ctv", s.llamacpp_kv_cache]
             if mmproj:
                 cmd += ["--mmproj", str(mmproj)]
-                if s.llamacpp_ctx_size > 65536:
+                if context * parallel > 65536:
                     # The vision projector (~1 GB) runs on the CPU so a long context still fits on the GPU; only
                     # pictures pay for it (a few seconds each). Measured, 27B Q4 on a 4090: 96K stays at ~82 tok/s.
                     cmd += ["--no-mmproj-offload"]
             mtp = mtp_layers(model)
-            if mtp:
+            if mtp and parallel == 1:
                 # The model's own multi-token-prediction head drafts 3 tokens per step, verified in one pass. One
                 # slot: with llama-server's default 4 (or even 2) parallel slots the verification of hybrid models
                 # (recurrent + attention layers, e.g. Qwen3.8) cost ~1 token-time per drafted token and drafting was
                 # slower than none. Measured, Qwen3.8 27B Q4 on a 4090: 37 tok/s plain → 70-103 tok/s. Requests
                 # that arrive together (a title while a reply streams) take turns.
-                cmd += ["--spec-type", "draft-mtp", "--spec-draft-n-max", "3", "-np", "1"]
+                cmd += ["--spec-type", "draft-mtp", "--spec-draft-n-max", "3"]
             events.log("info", "llamacpp", f"Starting llama-server {RELEASE} for {m.name} on port {port}"
-                                           + (" with MTP speculative decoding" if mtp else ""))
+                                           + f" with {parallel} generation slot(s), {context} requested tokens per slot"
+                                           + (" and MTP speculative decoding" if mtp and parallel == 1 else ""))
             proc = subprocess.Popen(cmd, cwd=INSTALL_DIR, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                     text=True, encoding="utf-8", errors="replace",
                                     **detached())
             bind_to_server_lifetime(proc)
             self._proc, self._port, self._model_id = proc, port, m.id
+            self._parallel, self._context_per_slot = parallel, context
+            self._load_owner, self._loading = owner, True
+            self._gpu_offload_complete = None
             tail: list[str] = []
             threading.Thread(target=self._pump, args=(proc, tail), daemon=True, name="log-llamacpp").start()
         runtimes.publish("llamacpp")
@@ -352,6 +431,10 @@ class LlamaServer:
                     self._stop_locked()
             runtimes.publish("llamacpp")
             raise
+        finally:
+            with self._lock:
+                if self._proc is proc:
+                    self._loading = False
         events.log("info", "llamacpp", f"{m.name} is being served on port {port}")
 
     @staticmethod
@@ -379,6 +462,10 @@ class LlamaServer:
             tail.append(line)
             del tail[:-40]
             lowered = line.lower()
+            if offload := re.search(r'offloaded\s+(\d+)/(\d+)\s+layers\s+to\s+gpu',lowered):
+                with self._lock:
+                    if self._proc is proc:
+                        self._gpu_offload_complete=int(offload[1])==int(offload[2])
             level: events.LogLevel = "error" if ("error" in lowered or "failed" in lowered) else "debug"
             events.log(level, "llamacpp", line)
         code = proc.wait()
@@ -394,6 +481,9 @@ class LlamaServer:
         """Kill the process; returns the id of the model it was serving."""
         proc, model_id = self._proc, self._model_id
         self._proc, self._port, self._model_id = None, None, None
+        self._parallel, self._context_per_slot = 1, None
+        self._load_owner, self._loading = None, False
+        self._gpu_offload_complete = None
         if proc is not None and proc.poll() is None:
             kill_tree(proc)
             try:
