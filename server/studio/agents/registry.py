@@ -7,8 +7,13 @@ from .. import db
 from ..agent.types import ToolSpec
 from ..schemas_agents import CapabilityEntry
 
-BASE = {'start_mission', 'search_tools', 'load_tools', 'ask_user', 'list_dir', 'read_file',
-        'search_files', 'system_info', 'list_models', 'world_time', 'skill_read'}
+# Schemas every conversation gets without discovery: finding and loading tools, plus the everyday work of an agent
+# (reading, writing and editing files, running commands and Python, its plan). A starter set without a way to write
+# a file sends models looking for one through whatever tool takes a name.
+BASE = {'start_mission', 'search_tools', 'load_tools', 'ask_user', 'system_info', 'list_models', 'world_time',
+        'list_dir', 'read_file', 'search_files', 'find_files', 'write_file', 'edit_file',
+        'run_command', 'start_process', 'read_process_output', 'stop_process', 'run_python', 'read_skill',
+        'update_plan', 'view_image', 'fetch_url'}
 
 
 def visible(sid: str, specs: list[ToolSpec]) -> list[ToolSpec]:
@@ -86,7 +91,8 @@ def discovery_guide(specs: list[ToolSpec]) -> str:
         "Available tool names for this session: " + ", ".join(names) + ".\n"
         "If a listed tool has no visible schema, call load_tools with its exact name, then call it using the "
         "returned schema. For an unfamiliar task, call search_tools with a short task description, then "
-        "load_tools with the matching names. Never use skill_read to list tools or invent a skill named tools. "
+        "load_tools with the matching names. Tools are loaded only with load_tools: skill_read and read_skill read "
+        "documents (saved skills, how-to guides) and never load or run a tool. "
         "If search has no results, rephrase or use an empty query to browse before concluding a tool is absent. "
         "Use actual function tool calls; never print a simulated [Tool call ...] transcript. "
         "A tool's presence does not mean its model, credentials, workspace or external service is configured. "

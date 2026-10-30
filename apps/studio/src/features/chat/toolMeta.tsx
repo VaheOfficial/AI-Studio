@@ -94,7 +94,7 @@ const TOOL_META: Record<string, { icon: ReactNode; verb: string; primary?: strin
   cancel_delegation: { icon: <Square />, verb: 'Stop subagent', primary: 'id' },
   knowledge_search: { icon: <Brain />, verb: 'Retrieve knowledge', primary: 'query' },
   knowledge_save: { icon: <Brain />, verb: 'Save knowledge', primary: 'text' },
-  skill_read: { icon: <BookOpen />, verb: 'Read skill', primary: 'name' },
+  skill_read: { icon: <BookOpen />, verb: 'Read saved skill', primary: 'name' },
   invoke_skill: { icon: <Wrench />, verb: 'Use skill', primary: 'name' },
   artifact_save: { icon: <FilePen />, verb: 'Save artifact', primary: 'title' },
   artifact_read: { icon: <FileText />, verb: 'Read artifact', primary: 'id' },
