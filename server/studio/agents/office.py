@@ -18,7 +18,7 @@ def manifest(host: str, base_url: str):
     identity = uuid.uuid5(uuid.NAMESPACE_URL, 'grom-office-' + host)
     return f'''<?xml version="1.0" encoding="UTF-8"?>
 <OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:type="TaskPaneApp">
-<Id>{identity}</Id><Version>0.3.1.0</Version><ProviderName>Grom AI Studio</ProviderName><DefaultLocale>en-US</DefaultLocale>
+<Id>{identity}</Id><Version>0.3.2.0</Version><ProviderName>Grom AI Studio</ProviderName><DefaultLocale>en-US</DefaultLocale>
 <DisplayName DefaultValue="Grom Agents"/><Description DefaultValue="Connect this document to your local agent with scoped commands and approvals."/>
 <IconUrl DefaultValue="{origin}/office/icon.png"/><SupportUrl DefaultValue="{origin}/office"/>
 <AppDomains><AppDomain>{origin}</AppDomain></AppDomains><Hosts><Host Name="{app}"/></Hosts>
