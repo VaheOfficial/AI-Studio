@@ -4,14 +4,15 @@
   overflow-wrap: anywhere;
 }
 
-.md > * + * {
-  margin-top: 0.85em;
+/* Browser margins off (zero specificity, so the spacing below always wins); blocks are spaced by what follows */
+.md :where(p, ul, ol, h1, h2, h3, h4, h5, h6, blockquote, table, hr, pre) {
+  margin: 0;
 }
 
-.md p,
-.md ul,
-.md ol {
-  margin: 0;
+.md > * + *,
+.md li > * + *,
+.md blockquote > * + * {
+  margin-top: 0.85em;
 }
 
 .md ul,
@@ -27,11 +28,26 @@
   color: var(--text-3);
 }
 
-.md h1,
-.md h2,
-.md h3 {
+.md :is(h1, h2, h3, h4, h5, h6) {
+  color: var(--text-1);
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.md h1 {
+  font-size: 1.3em;
+}
+
+.md h2 {
+  font-size: 1.15em;
+}
+
+.md :is(h3, h4, h5, h6) {
+  font-size: 1em;
+}
+
+.md > * + :is(h1, h2, h3, h4, h5, h6) {
   margin-top: 1.4em;
-  font-size: 1.1em;
 }
 
 .md a {
@@ -77,11 +93,14 @@
 }
 
 .inline {
-  padding: 1.5px 6px;
+  padding: 0.1em 0.35em;
   border-radius: var(--radius-xs);
   background: var(--bg-3);
-  border: 1px solid var(--border);
-  font-size: 0.87em;
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  /* A chip that wraps keeps its padding and rounding on both lines */
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
 }
 
 .codeBlock {
