@@ -1,6 +1,6 @@
 """Grom AI Studio backend."""
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 
 def _use_system_certificates() -> None:
