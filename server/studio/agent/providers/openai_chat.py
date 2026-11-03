@@ -99,9 +99,7 @@ class OpenAIProvider(Provider):
         self.api_key = api_key
 
     async def info(self) -> ModelInfo:
-        from ...agents import model_checks
-        verified = model_checks.get('openai:' + self.model)
-        return ModelInfo(vision=looks_like_vision(self.model), tools=bool(verified and verified['tools']))
+        return ModelInfo(vision=looks_like_vision(self.model))
 
     @staticmethod
     def _messages(system: str, history: list[Message]) -> list[dict[str, Any]]:

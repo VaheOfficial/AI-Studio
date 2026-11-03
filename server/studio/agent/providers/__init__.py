@@ -75,8 +75,8 @@ async def list_chat_models() -> list[ChatModelOption]:
     if s.openai_base_url:
         try:
             ids = await list_openai_models(s.openai_base_url, s.openai_api_key)
-            from ...agents import model_checks
-            options += [ChatModelOption(id=f"openai:{mid}", provider="openai", name=mid, tools=bool((model_checks.get(f'openai:{mid}') or {}).get('tools')), available=True,
+            # A compatible server's model list says nothing about tool support; current models call tools
+            options += [ChatModelOption(id=f"openai:{mid}", provider="openai", name=mid, tools=True, available=True,
                                         vision=looks_like_vision(mid)) for mid in ids]
         except (ProviderError, httpx.HTTPError, ValueError) as exc:
             events.log("warn", "openai", f"Could not list models from {s.openai_base_url}: {exc}")
